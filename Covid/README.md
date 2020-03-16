@@ -2,6 +2,8 @@ Questo report è pensato per fornire indicazioni semplici riguardanti l'andament
 
 Sono state analizzate tre variabili: Numero dei casi positivi, decessi e la richiesta di terapia intensiva in ambito nazionale e regionale.
 
-I dati possono essere aggiornati ogni giorno premendo il tasto aggiorna.
+<p align="center">
+  <img src="https://github.com/DavideStenner/Personal-Project/blob/master/Covid/grafico1.png" width="800" />
+</p>
 
-![Alt Text](/Personal-Project/Covid/grafico1.png?raw=true "Title")
+I dati possono essere aggiornati ogni giorno premendo il tasto aggiorna.
