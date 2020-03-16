@@ -11,3 +11,5 @@ Sono state analizzate tre variabili: Numero dei casi positivi, decessi e la rich
 </p>
 
 I dati possono essere aggiornati ogni giorno premendo il tasto aggiorna.
+
+Per utilizzare il report bisogna installare power bi.
