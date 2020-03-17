@@ -13,3 +13,6 @@ Sono state analizzate tre variabili: Numero dei casi positivi, decessi e la rich
 I dati possono essere aggiornati ogni giorno premendo il tasto aggiorna.
 
 Per utilizzare il report bisogna installare power bi.
+
+
+I dati sono presi dalla pagina github della [protezione civile](https://github.com/pcm-dpc/COVID-19) 
