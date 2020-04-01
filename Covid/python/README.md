@@ -8,7 +8,7 @@ Queste informazioni sono poi rappresentate graficamente sia puntualmente sia in 
 Sono state analizzate tre variabili: Numero dei casi positivi, decessi e la richiesta di terapia intensiva in ambito nazionale e regionale.
 
 <p align="center">
-  <img src="https://github.com/DavideStenner/Personal-Project/blob/master/Covid/grafico1.png" width="800" />
+  <img src="https://github.com/DavideStenner/Personal-Project/blob/master/Covid/python/Graph/grafico1.png" width="800" />
 </p>
 
 I dati sono presi dalla pagina github della [protezione civile](https://github.com/pcm-dpc/COVID-19) 
