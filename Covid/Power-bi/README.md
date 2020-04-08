@@ -1,6 +1,6 @@
 Questo report è pensato per fornire indicazioni semplici riguardanti l'andamento dell'infezione del covid-19 in Italia.
 
-Sono state analizzate tre variabili: Numero dei casi positivi, decessi e la richiesta di terapia intensiva in ambito nazionale e regionale.
+Sono state analizzate tre variabili: Numero dei casi positivi, decessi e la richiesta di terapia intensiva in ambito nazionale, regionale e provinciale (solo il numero dei casi positivi).
 
 <p align="center">
   <img src="https://github.com/DavideStenner/Personal-Project/blob/master/Covid/Power-bi/graph/grafico1.png" width="800" />
