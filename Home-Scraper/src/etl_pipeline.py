@@ -1,7 +1,8 @@
 import argparse
 import pickle
 import time
-from etl.etl_utilities import etl_1, etl_2
+from etl.etl_utilities import etl_1, etl_2, etl_geo
+import os
 
 def str2bool(value):
     return value.lower == 'true'
@@ -14,6 +15,9 @@ if __name__ == '__main__':
 
     #execute second step of et2
     parser.add_argument("-etl2", default = True, type = str2bool)
+
+    #execute second step of et2
+    parser.add_argument("-etlgeo", default = True, type = str2bool)
 
     #treshold for intersection scorer to clean indirizzi
     parser.add_argument("-treshold", default = 0.6, type = float)
@@ -57,16 +61,16 @@ if __name__ == '__main__':
             #open url data file
             with open(args.path_data_url, 'rb') as file:
                 url_ = pickle.load(file)
-
-            #etl pipeline
-            data = etl_1(data, url_)
-
-            #save file
-            with open(args.path_etl_out + 'data_etl1.pkl', 'wb') as file:
-                pickle.dump(data, file)
-
         except:
             print('Missing file or wrong path')
+
+        #etl pipeline
+        data = etl_1(data, url_)
+
+        #save file
+        with open(os.path.join(args.path_etl_out, 'data_etl1.pkl'), 'wb') as file:
+            pickle.dump(data, file)
+
 
     if args.etl2:
 
@@ -75,18 +79,35 @@ if __name__ == '__main__':
         try:
 
             #open data file
-            with open(args.path_etl_out + 'data_etl1.pkl', 'rb') as file:
+            with open(os.path.join(args.path_etl_out, 'data_etl1.pkl'), 'rb') as file:
                 data = pickle.load(file)
             
-            #etl pipeline
-            data, aler_home_corrected = etl_2(args, data)
+        except:
+            print('Missing file or wrong path')
 
-            #save file
-            with open(args.path_etl_out + 'data_etl2.pkl', 'wb') as file:
-                pickle.dump(data, file)
+        #etl pipeline
+        data, aler_home_corrected = etl_2(args, data)
 
-            with open(args.path_etl_out + 'data_aler_corrected.pkl', 'wb') as file:
-                pickle.dump(aler_home_corrected, file)
+        #save file
+        with open(os.path.join(args.path_etl_out, 'data_etl2.pkl'), 'wb') as file:
+            pickle.dump(data, file)
+
+        with open(os.path.join(args.path_etl_out, 'data_aler_corrected.pkl'), 'wb') as file:
+            pickle.dump(aler_home_corrected, file)
+
+
+    if args.etlgeo:
+
+        print('Beginning geo feature extraction: etlgeo\n')
+
+        try:
+            with open(os.path.join(args.path_etl_out, 'data_etl2.pkl'), 'rb') as file:
+                data = pickle.load(file)
 
         except:
             print('Missing file or wrong path')
+
+        data = etl_geo(args, data)
+
+        with open(os.path.join(args.path_etl_out, 'data_final.pkl'), 'wb') as file:
+            pickle.dump(data, file)

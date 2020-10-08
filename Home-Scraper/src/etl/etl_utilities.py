@@ -4,10 +4,12 @@ import re
 from nltk import word_tokenize
 import nltk
 from others.logging_utils import init_logger
+from itertools import chain
 import geojson
 import json
 from geopy import distance
 from pandas.io.json import json_normalize
+from tqdm import tqdm
 
 def etl_1(data, url_):
     #function which return anno in number othwerwise null
@@ -67,12 +69,12 @@ def etl_1(data, url_):
         return(text)
     
     #function which fill NA with mancante
-    def missing_filler(data, char, label = 'mancante'):
+    # def missing_filler(data, char, label = 'mancante'):
 
-        for col in char:
-            data[col] = data[col].fillna('mancante')
+    #     for col in char:
+    #         data[col] = data[col].fillna('mancante')
         
-        return(data)
+    #     return(data)
     
     #Clean out from every special character in special_list
     def clean_special(x):
@@ -585,126 +587,83 @@ def etl_geo(args, data):
                 return(sup)
         return(store)
 
-    #Check if x is inside y
-    def check_inside(x, y):
-        vec = []
-        for z in y:
-            vec += [x == z]
-        return(np.any(vec))
-
-    def genere_finder(text, label_match = 'alimentare', split_l = '|'):
-        res = []
-        for x in text:
-            temp = x.split(split_l)
-            res += [np.any([label_match == y for y in temp])]
-        return(res)
-
     def seconda_linea(x):
         if len(x) == 1:
             return('')
         else:
-            return(re.sub('.*\,', '', x))
-        
-    def distanza_parco(casa, parchi):
-        vec_dist = []
-        long_casa, lat_casa = casa.LONG_WGS84, casa.LAT_WGS84
-                
-        vec = []
-        
-        for _, row in parchi.iterrows():
-
-            long_store, lat_store = row.LONGITUDE, row.LATITUDE
-
-            vec += [distance.distance((lat_casa, long_casa), (lat_store, long_store)).kilometers]
-        return(np.argmin(vec), np.min(vec))
-
-    def dist_parco(data, parchi):
-        vec_idx = []
-        vec_dist = []
-        for _, row in data.iterrows():
-            idx, dist = distanza_parco(row, parchi)
-            vec_idx += [idx]
-            vec_dist += [dist]
-            
-        res = parchi.loc[vec_idx,['area_parco']].reset_index(drop = True)
-        res['distanza_parco'] = vec_dist
-        return(res)
-
-    def distanza_metro(casa, fermate):
-        vec_dist = []
-        long_casa, lat_casa = casa.LONG_WGS84, casa.LAT_WGS84
-                
-        vec = []
-        
-        for _, row in fermate.iterrows():
-
-            long_store, lat_store = row.LONGITUDE, row.LATITUDE
-
-            vec += [distance.distance((lat_casa, long_casa), (lat_store, long_store)).kilometers]
-        return(np.argmin(vec), np.min(vec))
-
-    #calculate distance to metro
-    def dist_metro(data, fermate):
-        vec_idx = []
-        vec_dist = []
-        for _, row in data.iterrows():
-            idx, dist = distanza_metro(row, fermate)
-            vec_idx += [idx]
-            vec_dist += [dist]
-            
-        res = fermate.loc[vec_idx,['nome', 'linee', 'linee1', 'linee2', 'LONGITUDE', 'LATITUDE']].reset_index(drop = True)
-        res['distanza_metro'] = vec_dist
-        return(res)
-
-    def carotaggio(x):
+            return(re.sub(r'.*\,', '', x))
+    
+    #take first element
+    def take_first(x):
         while True:
             dim = list(np.array(x).shape)
             if len(dim) == 2:
                 return(x)
             x = x[0]
     
-    #calculate lowest distance to given store
-    def distanza_supermercato(casa, negozi, store):
-        vec_dist = []
+
+    #calculate lowest distance to given element
+    def distanza_home_element(casa, element, long_label, lat_label):
 
         #calculate long, lat of home
         long_casa, lat_casa = casa.LONG_WGS84, casa.LAT_WGS84
         
-        #keep only store
-        temp = negozi[negozi.insegna_corretta == store].reset_index(drop = True)
         vec = []
         
         #calculate each distance to every store of same categories
-        for _, row in temp.iterrows():
+        for _, row in element.iterrows():
 
-            long_store, lat_store = row.LONG_WGS84, row.LAT_WGS84
+            long_element, lat_element = row[long_label], row[lat_label]
+            dist = distance.distance((lat_casa, long_casa), (lat_element, long_element)).kilometers
 
-            vec += [distance.distance((lat_casa, long_casa), (lat_store, long_store)).kilometers]
+            vec += [dist]
         
         result = np.min(vec)
 
         return(result)
 
-    #check lowest distance to given store
-    def dist_super(data, negozi, store):
+    #calculate nearest distance vector
+    def dist_df(data, element, filter_var = None, label_filter = None, long_label = 'LONG', lat_label = 'LAT'):
         vec = []
+
+        #keep only element after filter
+        if (filter_var is not None) & (label_filter is not None):
+            element = element.loc[element[filter_var] == label_filter].reset_index(drop = True)
         
-        for _, row in data.iterrows():
-            vec += [distanza_supermercato(row, negozi, store)]
+        if (filter_var is not None) ^ (label_filter is not None):
+            raise ValueError("filter or label filter missing")
+
+        for _, row in tqdm(data.iterrows()):
+            vec += [distanza_home_element(row, element, long_label, lat_label)]
 
         return(vec)
 
+    #count how many stores are inside the selected radius
+    def radius_df(data, element, radius, filter_var = None, filter_label = None, long_label = 'LONG', lat_label = 'LAT'):
+        vec = []
+
+        #keep only element after filter
+        if (filter_var is not None) & (filter_label is not None):
+            element = element.loc[element[filter_var] == filter_label].reset_index(drop = True)
+        
+        if (filter_var is not None) ^ (filter_label is not None):
+            raise ValueError("filter or label filter missing")
+
+        for _, row in tqdm(data.iterrows()):
+            vec += [sum_inside_radius_df(row, element, radius, long_label, lat_label)]
+
+        return(vec) 
+
+
     #calculate how many supermercati are inside radius
-    def supermercati_inside_radius(casa, store, radius):
-        vec_dist = []
+    def sum_inside_radius_df(casa, element, radius, long_label, lat_label):
         long_casa, lat_casa = casa.LONG_WGS84, casa.LAT_WGS84
                 
-        temp = negozi
         vec = []
         #find distance of each home-store
-        for _, row in negozi.iterrows():
+        for _, row in element.iterrows():
 
-            long_store, lat_store = row.LONG_WGS84, row.LAT_WGS84
+            long_store, lat_store = row[long_label], row[lat_label]
 
             vec += [distance.distance((lat_casa, long_casa), (lat_store, long_store)).kilometers]
 
@@ -715,61 +674,28 @@ def etl_geo(args, data):
 
         return(result)
 
-    #count how many stores are inside the selected radius
-    def radius_super(data, negozi, radius):
+    #calculate number of reati inside selected radius of a selected reato
+    def radius_json(data, element, radius, filter_label = None):
         vec = []
-        for _, row in data.iterrows():
-            vec += [supermercati_inside_radius(row, negozi, radius)]
 
-        return(vec) 
+        #keep only element after filter
+        if (filter_label is not None):
+            element = element[filter_label]
 
-    def distanza_scuola(casa, scuole, school):
-        vec_dist = []
+        for _, row in tqdm(data.iterrows()):
+            vec += [sum_inside_radius_json(row, element, radius)]
+        return(vec)
+
+
+    #calculate how many reati were done inside selected radius from the seleted home of a selected reato
+    def sum_inside_radius_json(casa, element, radius):
         long_casa, lat_casa = casa.LONG_WGS84, casa.LAT_WGS84
-                
-        temp = scuole[scuole.grado_scuola == school].reset_index(drop = True)
-        vec = []
         
-        for _, row in temp.iterrows():
+        vec = [distance.distance((lat_casa, long_casa), (lat_store, long_store)).kilometers < radius for lat_store, long_store in element]
+        
+        result = np.sum(vec)
+        return(result)
 
-            long_store, lat_store = row.LONGITUDE, row.LATITUDE
-
-            vec += [distance.distance((lat_casa, long_casa), (lat_store, long_store)).kilometers]
-        return(np.min(vec))
-
-    def dist_scuola(data, scuole, school):
-        vec = []
-        for _, row in data.iterrows():
-            vec += [distanza_scuola(row, scuole, school)]
-        return(vec)
-
-    def distanza_criminality(casa, lista_reati, reato, radius):
-        vec_dist = []
-        long_casa, lat_casa = casa.LONG_WGS84, casa.LAT_WGS84
-                
-        temp = lista_reati[reato]
-        vec = [distance.distance((lat_casa, long_casa), (lat_store, long_store)).kilometers < radius for lat_store, long_store in temp]
-
-        return(np.sum(vec))
-
-    def dist_criminality(data, lista_reati, reato, radius):
-        vec = []
-        for _, row in data.iterrows():
-            vec += [distanza_criminality(row, lista_reati, reato, radius)]
-        return(vec)
-
-    def distanza_criminality_all(casa, lista_reati, radius):
-        vec_dist = []
-        long_casa, lat_casa = casa.LONG_WGS84, casa.LAT_WGS84
-                
-        vec = [distance.distance((lat_casa, long_casa), (lat_store, long_store)).kilometers < radius for lat_store, long_store in lista_reati]
-        return(np.sum(vec))
-
-    def dist_criminality_all(data, lista_reati, radius):
-        vec = []
-        for _, row in data.iterrows():
-            vec += [distanza_criminality(row, lista_reati, radius)]
-        return(vec)
 
     #drop missing lat, long
     mask = (data.LONG_WGS84.isnull()) | (data.LONG_WGS84.isnull())
@@ -778,15 +704,10 @@ def etl_geo(args, data):
     try:
         
         missing_file = 'economia_media_grande_distribuzione_coord.csv'
-        negozi = pd.read_csv(args.path_datasetMilano + 'economia_media_grande_distribuzione_coord.csv', delimiter =';')
+        negozi = pd.read_csv(args.path_datasetMilano + 'economia_media_grande_distribuzione_coord.csv', delimiter =',')
 
-        missing_file = 'ds634_civici_coordinategeografiche_20200203.csv'
-        nil_geo = pd.read_csv(args.path_datasetMilano + 'ds634_civici_coordinategeografiche_20200203.csv', delimiter =';')
-
-        missing_file = 'nilzone.geojson'
-
-        with open(args.path_datasetMilano + 'nilzone.geojson') as f:
-            nil_json = json.load(f)
+        missing_file = 'ds634_civici_coordinategeografiche.csv'
+        nil_geo = pd.read_csv(args.path_datasetMilano + 'ds634_civici_coordinategeografiche.csv', delimiter =',')
 
         missing_file = 'tpl_metrofermate.geojson'
         with open(args.path_datasetMilano + 'tpl_metrofermate.geojson') as f:
@@ -796,27 +717,24 @@ def etl_geo(args, data):
         with open(args.path_datasetMilano + 'parchi.geojson') as f:
             parchi_json = json.load(f)
 
-        missing_file = 'scuoleinfanzia_2012_2013.geojson'
-        with open(args.path_datasetMilano + 'scuoleinfanzia_2012_2013.geojson') as f:
+        missing_file = 'scuoleinfanzia.geojson'
+        with open(args.path_datasetMilano + 'scuoleinfanzia.geojson') as f:
             scuole_infanzia_json = json.load(f)
 
-        missing_file = 'scuoleprimarie_2012_2013.geojson'
-        with open(args.path_datasetMilano + 'scuoleprimarie_2012_2013.geojson') as f:
+        missing_file = 'scuoleprimarie.geojson'
+        with open(args.path_datasetMilano + 'scuoleprimarie.geojson') as f:
             scuole_primarie_json = json.load(f)
 
-        missing_file = 'scuolesecondarie1grado_2012_2013.geojson'
-        with open(args.path_datasetMilano + 'scuolesecondarie1grado_2012_2013.geojson') as f:
+        missing_file = 'scuolesecondarie1grado.geojson'
+        with open(args.path_datasetMilano + 'scuolesecondarie1grado.geojson') as f:
             scuole_secondarie_json = json.load(f)
 
-        missing_file = 'scuolesecondariesecondogrado.geojson'
-        with open(args.path_datasetMilano + 'scuolesecondariesecondogrado.geojson') as f:
+        missing_file = 'scuolesecondarie2grado.geojson'
+        with open(args.path_datasetMilano + 'scuolesecondarie2grado.geojson') as f:
             scuole_secondarie_2_json = json.load(f)
 
         missing_file = 'criminality_info.pkl'
         criminality = pd.read_pickle(args.path_openMilano + 'criminality_info.pkl')
-
-        missing_file = 'criminality_info.pkl'
-        aler = pd.read_pickle(args.path_openMilano + 'data_case_popolari.pkl')
 
         del missing_file
     except:
@@ -830,16 +748,11 @@ def etl_geo(args, data):
 
     #drop join_key
     data = data.drop('join_key', axis = 1)
-
-
     #NEGOZI
 
-    # negozi['settore_merceologico'].fillna('', inplace = True)
-    # negozi['insegna'].fillna('', inplace = True)
-
     #lowe cleaning 
-    negozi['settore_merceologico'] = negozi['settore_merceologico'].apply(lambda x: x.lower())
-    negozi['insegna'] = negozi['insegna'].apply(lambda x: x.lower())
+    negozi['settore_merceologico'] = negozi['settore_merceologico'].apply(lambda x: str(x).lower())
+    negozi['insegna'] = negozi['insegna'].apply(lambda x: str(x).lower())
     negozi['DescrizioneVia'] = negozi['DescrizioneVia'].apply(lambda x: str(x).lower())
 
     #correct store depending on supermercati
@@ -849,7 +762,7 @@ def etl_geo(args, data):
     negozi = negozi[[x in args.supermercati for x in negozi['insegna_corretta']]]
 
     #cleaning of columns and create mean of lat, long by description --> have only one value
-    nil_geo['DESCRIZIONE'] = (nil_geo.TIPO + ' ' + nil_geo.DENOMINAZIONE).apply(lambda x: x.lower())
+    nil_geo['DESCRIZIONE'] = (nil_geo.TIPO + ' ' + nil_geo.DENOMINAZIONE).apply(lambda x: str(x).lower())
     nil_geo = nil_geo[['DESCRIZIONE', 'LONG_WGS84', 'LAT_WGS84']].groupby('DESCRIZIONE').mean().reset_index()
 
     #take out null rows
@@ -866,14 +779,21 @@ def etl_geo(args, data):
     negozi = negozi[~negozi['LONG_WGS84'].isnull()]
 
     #check distance to store
+    print('Beginning Supermercati\n')
+    
     for store in args.supermercati:
-        data[store+'_distanza'] = dist_super(data, negozi, store)
+        print(f'\nStore: {store}\n')
+        data[store+'_distanza'] = dist_df(data, negozi, filter_var = 'insegna', label_filter = store, long_label = "LONG_WGS84", lat_label = "LAT_WGS84")
+
 
     #count how many stores are in radius of radius_list
     radius_list = [.25, .5, 1]
+    
+    print('Beginning Supermercati radius\n')
 
     for kilometer in radius_list:
-        data['store_radius_' + str(kilometer) + "_km"] = radius_super(data, negozi, kilometer)
+        print(f'\nRadius: {kilometer}\n')
+        data['store_radius_' + str(kilometer) + "_km"] = radius_df(data, negozi, kilometer, long_label = "LONG_WGS84", lat_label = "LAT_WGS84")
 
     #find minimum distance of each store to a selected home
     mask_column = [x for x in data.columns if re.search('distanza', x)]
@@ -890,71 +810,108 @@ def etl_geo(args, data):
     fermate = fermate.rename(columns = {'properties.nome': 'nome', 'properties.linee': 'linee', 'geometry.coordinates': 'coordinates'})
 
     #clean linee1
-    fermate['linee1'] = fermate.linee.apply(lambda x: re.sub('\,.*', '', x))
+    fermate['linee1'] = fermate.linee.apply(lambda x: re.sub(r'\,.*', '', x))
     fermate['linee2'] = fermate.linee.apply(lambda x: seconda_linea(x))
 
     #take lat, long from coordinates
     fermate['LONGITUDE'] = fermate.coordinates.apply(lambda x: x[0])
     fermate['LATITUDE'] = fermate.coordinates.apply(lambda x: x[1])
 
+    #calculate distance to metro and concatenate
+    print('Beginning Metro\n')
 
-    temp = dist_metro(data, fermate)[['nome', 'linee', 'linee1', 'linee2', 'distanza_metro']]
+    fermate['distanza_metro'] = dist_df(data, fermate, filter_var = None, label_filter = None, long_label = "LONGITUDE", lat_label = "LATITUDE")
+    fermate = fermate[['nome', 'linee', 'linee1', 'linee2', 'distanza_metro']]
     data = pd.concat([data, temp], axis = 1)
 
-    
+    #json normalize parchi dataset
     parchi = json_normalize(parchi_json['features'])
     parchi = parchi.drop(['type', 'properties.ZONA', 'geometry.type', 'properties.PERIM_M', 'properties.AREA'], axis = 1)
 
+    #rename dataset
     parchi = parchi.rename(columns = {'properties.AREA_MQ': 'area_parco',
                             'properties.PARCO': 'parco', 'geometry.coordinates': 'coordinates'})
 
-    parchi.coordinates = parchi.coordinates.apply(lambda x: np.array(carotaggio(x)).mean(axis = 0)) 
+
+    parchi.coordinates = parchi.coordinates.apply(lambda x: np.array(take_first(x)).mean(axis = 0))
+
+    #calculate longitude/latitude
     parchi['LONGITUDE'] = parchi.coordinates.apply(lambda x: x[0])
     parchi['LATITUDE'] = parchi.coordinates.apply(lambda x: x[1])
 
+    #drop small park
     parchi = parchi[parchi.area_parco>10000].reset_index(drop = True)
+
+    #drop everything without PARCO in the name
     parchi = parchi[['PARCO' in x for x in parchi['parco']]].reset_index(drop = True)
+    
+    #drop duplicates
     parchi = parchi.loc[parchi['parco'].drop_duplicates().index].reset_index(drop = True)
 
-    temp = dist_parco(data, parchi)
-    data = pd.concat([data, temp], axis = 1)
+    #calculate the distance of each home to nearest parco and append
+    print('Beginning park\n')
 
+    parchi['distanza_parco'] = dist_df(data, parchi)
+    parchi = parchi[['distanza_parco', 'area_parco']].reset_index(drop = True)
 
+    data = pd.concat([data, parchi], axis = 1)
+
+    #clean scuole
     scuole_infanzia = json_normalize(scuole_infanzia_json['features'])
     scuole_primarie = json_normalize(scuole_primarie_json['features'])
+
+    #clean scuole secondarie
     scuole_secondarie = json_normalize(scuole_secondarie_json['features'])
     scuole_secondarie_2 = json_normalize(scuole_secondarie_2_json['features'])
-
+    
+    #keep useful column
     scuole_infanzia = scuole_infanzia[['properties.GRADO', 'properties.TIPO', 'geometry.coordinates']]
     scuole_primarie = scuole_primarie[['properties.GRADO', 'properties.TIPO', 'geometry.coordinates']]
-
     scuole_secondarie = scuole_secondarie[['properties.GRADO', 'properties.TIPO', 'geometry.coordinates']]
-
     scuole_secondarie_2 = scuole_secondarie_2[['properties.POSIZGIURI', 'geometry.coordinates']]
+
+    #rename columns
     scuole_secondarie_2 = scuole_secondarie_2.rename(columns = {'properties.POSIZGIURI': 'properties.TIPO',
                                                             'geometry.coordinates': 'geometry.coordinates'})
+
+    #add Grado
     scuole_secondarie_2['properties.GRADO'] = 'Scuola secondaria di secondo grado'
     scuole_secondarie_2 = scuole_secondarie_2[['properties.GRADO', 'properties.TIPO', 'geometry.coordinates']]
 
+    #concatenate all
     scuole = pd.concat([scuole_infanzia, scuole_primarie, scuole_secondarie, scuole_secondarie_2], axis = 0, ignore_index = True)
+
+    #keep only statal school
     scuole = scuole[['STATALE' ==x for x in scuole['properties.TIPO']]].reset_index(drop = True)
     scuole = scuole.drop('properties.TIPO', axis = 1)
+
+    #rename columns
     scuole = scuole.rename(columns = {'properties.GRADO': 'grado_scuola', 'geometry.coordinates': 'coordinates'})
 
+    #calculate long, lat
     scuole['LONGITUDE'] = scuole.coordinates.apply(lambda x: x[0])
     scuole['LATITUDE'] = scuole.coordinates.apply(lambda x: x[1])
 
-    school_list = scuole.grado_scuola.unique()
+    #unique grade of school list
+    school_list = scuole['grado_scuola'].unique()
 
+    print('Beginning school\n')
+
+    #calculate nearest distance to selected grade school
     for school in school_list:
-        data[school+'_distanza'] = dist_scuola(data, scuole, school)
+        print(f'\nSchool: {school}\n')
+        data[school+'_distanza'] = dist_df(data, negozi, filter_var = 'grado_scuola', label_filter = school)
 
+    print('Beginning criminality\n')
+
+    #calculate number of reati 1km of distance
     for reato in ['violenza-sessuale', 'rapine', 'furti', 'omicidi', 'droga', 'campi-nomadi']:
-        data[reato + '_distanza_1k'] = dist_criminality(data, criminality, reato, radius = 1)
+        print(f'\nReato: {reato}\n')
+        data[reato + '_distanza_1k'] = radius_json(data, criminality, radius = 1, filter_label = reato)
 
-    data['reati_all_distanza_1k'] = dist_criminality_all(data, criminality_all, radius = 1)
+    print('Beginning criminality radius\n')
 
-    for school in school_list:
-        data[school+'_distanza'] = dist_scuola(data, criminalty[], school)
+    #calculate number of each reato with 1km of distance
+    data['reati_all_distanza_1k'] = radius_json(data, criminality_all, radius = 1)
 
     return(data)
