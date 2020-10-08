@@ -1,0 +1,9 @@
+pandas
+numpy
+tqdm
+selenium
+bs4
+requests
+urllib3
+lxml
+nltk
