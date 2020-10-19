@@ -8,8 +8,8 @@ from itertools import chain
 import geojson
 import json
 from geopy import distance
-from pandas.io.json import json_normalize
 from tqdm import tqdm
+import os
 
 def etl_1(data, url_):
     #function which return anno in number othwerwise null
@@ -391,13 +391,13 @@ def etl_2(args, data):
     
     #read open dataset
     #nil
-    nil = pd.read_csv(args.path_datasetMilano + 'ds634_civici_quartieri_zone_nil_cap_vie_20180518-unicode.csv', delimiter =';')
+    nil = pd.read_csv(os.path.join(args.path_datasetMilano, 'ds634_civici_quartieri_zone_nil_cap_vie_20180518-unicode.csv'), delimiter =';')
     
     #aler list
-    aler_home = pd.read_pickle(args.path_openMilano + 'data_case_popolari.pkl')
+    aler_home = pd.read_pickle(os.path.join(args.path_openMilano, 'data_case_popolari.pkl'))
     
     #nil geo
-    nil_geo = pd.read_csv(args.path_datasetMilano + 'ds634_civici_coordinategeografiche_20200203.csv', delimiter =';')
+    nil_geo = pd.read_csv(os.path.join(args.path_datasetMilano, 'ds634_civici_coordinategeografiche_20200203.csv'), delimiter =';')
     
     
     #extract number address 
@@ -580,8 +580,16 @@ def etl_2(args, data):
 
 def etl_geo(args, data):
 
+    def lower_cleaner_na(x):
+        if pd.isna(x):
+            return x
+        else:
+            return x.lower()
+
     #retain only corrected store... Esselunga abc --> Esselunga
     def correct_store(store, supermercati):
+        if pd.isna(store):
+            return(store)
         for sup in supermercati:
             if sup in store:
                 return(sup)
@@ -596,14 +604,14 @@ def etl_geo(args, data):
     #take first element
     def take_first(x):
         while True:
-            dim = list(np.array(x).shape)
+            dim = np.array(x, dtype = object).shape
             if len(dim) == 2:
                 return(x)
+            
             x = x[0]
-    
 
     #calculate lowest distance to given element
-    def distanza_home_element(casa, element, long_label, lat_label):
+    def distanza_home_element(casa, element, long_label, lat_label, index):
 
         #calculate long, lat of home
         long_casa, lat_casa = casa.LONG_WGS84, casa.LAT_WGS84
@@ -618,13 +626,19 @@ def etl_geo(args, data):
 
             vec += [dist]
         
-        result = np.min(vec)
-
-        return(result)
+        if index:
+            return((np.min(vec), np.argmin(vec)))
+        else:
+            return(np.min(vec))
 
     #calculate nearest distance vector
-    def dist_df(data, element, filter_var = None, label_filter = None, long_label = 'LONG', lat_label = 'LAT'):
-        vec = []
+    def dist_df(data, element, filter_var = None, label_filter = None, long_label = 'LONG', lat_label = 'LAT', index = False):
+
+        #if index take index of nearest and distance otherwise only distance
+        if index:
+            vec_dist, vec_idx = [], []
+        else:
+            vec_dist = []
 
         #keep only element after filter
         if (filter_var is not None) & (label_filter is not None):
@@ -634,9 +648,19 @@ def etl_geo(args, data):
             raise ValueError("filter or label filter missing")
 
         for _, row in tqdm(data.iterrows()):
-            vec += [distanza_home_element(row, element, long_label, lat_label)]
+            row_result = distanza_home_element(row, element, long_label, lat_label, index)
+            
+            if index:
+                vec_dist += [row_result[0]]
+                vec_idx += [row_result[1]]
+            else:
+                vec_dist += [row_result]
 
-        return(vec)
+        if index:
+            return((vec_dist, vec_idx))
+
+        else:
+            return(vec_dist)
 
     #count how many stores are inside the selected radius
     def radius_df(data, element, radius, filter_var = None, filter_label = None, long_label = 'LONG', lat_label = 'LAT'):
@@ -704,37 +728,37 @@ def etl_geo(args, data):
     try:
         
         missing_file = 'economia_media_grande_distribuzione_coord.csv'
-        negozi = pd.read_csv(args.path_datasetMilano + 'economia_media_grande_distribuzione_coord.csv', delimiter =',')
+        negozi = pd.read_csv(os.path.join(args.path_datasetMilano, 'economia_media_grande_distribuzione_coord.csv'), delimiter =',')
 
         missing_file = 'ds634_civici_coordinategeografiche.csv'
-        nil_geo = pd.read_csv(args.path_datasetMilano + 'ds634_civici_coordinategeografiche.csv', delimiter =',')
+        nil_geo = pd.read_csv(os.path.join(args.path_datasetMilano, 'ds634_civici_coordinategeografiche.csv'), delimiter =',')
 
         missing_file = 'tpl_metrofermate.geojson'
-        with open(args.path_datasetMilano + 'tpl_metrofermate.geojson') as f:
+        with open(os.path.join(args.path_datasetMilano, 'tpl_metrofermate.geojson')) as f:
             fermate_json = json.load(f)
 
         missing_file = 'parchi.geojson'
-        with open(args.path_datasetMilano + 'parchi.geojson') as f:
+        with open(os.path.join(args.path_datasetMilano, 'parchi.geojson')) as f:
             parchi_json = json.load(f)
 
         missing_file = 'scuoleinfanzia.geojson'
-        with open(args.path_datasetMilano + 'scuoleinfanzia.geojson') as f:
+        with open(os.path.join(args.path_datasetMilano, 'scuoleinfanzia.geojson')) as f:
             scuole_infanzia_json = json.load(f)
 
         missing_file = 'scuoleprimarie.geojson'
-        with open(args.path_datasetMilano + 'scuoleprimarie.geojson') as f:
+        with open(os.path.join(args.path_datasetMilano, 'scuoleprimarie.geojson')) as f:
             scuole_primarie_json = json.load(f)
 
         missing_file = 'scuolesecondarie1grado.geojson'
-        with open(args.path_datasetMilano + 'scuolesecondarie1grado.geojson') as f:
+        with open(os.path.join(args.path_datasetMilano, 'scuolesecondarie1grado.geojson')) as f:
             scuole_secondarie_json = json.load(f)
 
         missing_file = 'scuolesecondarie2grado.geojson'
-        with open(args.path_datasetMilano + 'scuolesecondarie2grado.geojson') as f:
+        with open(os.path.join(args.path_datasetMilano, 'scuolesecondarie2grado.geojson')) as f:
             scuole_secondarie_2_json = json.load(f)
 
         missing_file = 'criminality_info.pkl'
-        criminality = pd.read_pickle(args.path_openMilano + 'criminality_info.pkl')
+        criminality = pd.read_pickle(os.path.join(args.path_openMilano, 'criminality_info.pkl'))
 
         del missing_file
     except:
@@ -743,17 +767,14 @@ def etl_geo(args, data):
     #create dictionary of news: gpslocation
     criminality = {x: [y['gps'] for y in criminality[x] if y['gps'] is not None] for x in criminality.keys()}
 
-    #unlist all criminalty dictionary to create a list of all coordinate
-    criminality_all = list(chain(*[x for _, x in criminality.items()]))
-
     #drop join_key
     data = data.drop('join_key', axis = 1)
     #NEGOZI
 
     #lowe cleaning 
-    negozi['settore_merceologico'] = negozi['settore_merceologico'].apply(lambda x: str(x).lower())
-    negozi['insegna'] = negozi['insegna'].apply(lambda x: str(x).lower())
-    negozi['DescrizioneVia'] = negozi['DescrizioneVia'].apply(lambda x: str(x).lower())
+    negozi['settore_merceologico'] = negozi['settore_merceologico'].apply(lambda x: lower_cleaner_na(x))
+    negozi['insegna'] = negozi['insegna'].apply(lambda x: lower_cleaner_na(x))
+    negozi['DescrizioneVia'] = negozi['DescrizioneVia'].apply(lambda x: lower_cleaner_na(x))
 
     #correct store depending on supermercati
     negozi['insegna_corretta'] = negozi['insegna'].apply(lambda x: correct_store(x, args.supermercati))
@@ -762,7 +783,7 @@ def etl_geo(args, data):
     negozi = negozi[[x in args.supermercati for x in negozi['insegna_corretta']]]
 
     #cleaning of columns and create mean of lat, long by description --> have only one value
-    nil_geo['DESCRIZIONE'] = (nil_geo.TIPO + ' ' + nil_geo.DENOMINAZIONE).apply(lambda x: str(x).lower())
+    nil_geo['DESCRIZIONE'] = (nil_geo.TIPO + ' ' + nil_geo.DENOMINAZIONE).apply(lambda x: lower_cleaner_na(x))
     nil_geo = nil_geo[['DESCRIZIONE', 'LONG_WGS84', 'LAT_WGS84']].groupby('DESCRIZIONE').mean().reset_index()
 
     #take out null rows
@@ -786,12 +807,10 @@ def etl_geo(args, data):
         data[store+'_distanza'] = dist_df(data, negozi, filter_var = 'insegna', label_filter = store, long_label = "LONG_WGS84", lat_label = "LAT_WGS84")
 
 
-    #count how many stores are in radius of radius_list
-    radius_list = [.25, .5, 1]
-    
-    print('Beginning Supermercati radius\n')
+    #count how many stores are in radius of radius_list    
+    print('\nBeginning Supermercati radius\n')
 
-    for kilometer in radius_list:
+    for kilometer in args.radius_list:
         print(f'\nRadius: {kilometer}\n')
         data['store_radius_' + str(kilometer) + "_km"] = radius_df(data, negozi, kilometer, long_label = "LONG_WGS84", lat_label = "LAT_WGS84")
 
@@ -801,10 +820,10 @@ def etl_geo(args, data):
 
     #find supermercato più vicino
     mask_column = [x for x in data.columns if re.search('distanza', x)]
-    data['supermercato_vicino'] =  data[mask].idxmin(axis = 1).apply(lambda x: re.sub('_distanza', '', x))
+    data['supermercato_vicino'] =  data[mask_column].idxmin(axis = 1).apply(lambda x: re.sub('_distanza', '', x))
 
     #clean fermate_json
-    fermate = json_normalize(fermate_json['features']).drop(['type', 'properties.id', 'geometry.type'], axis = 1)
+    fermate = pd.json_normalize(fermate_json['features']).drop(['type', 'properties.id_amat', 'geometry.type'], axis = 1)
 
     #rename columns
     fermate = fermate.rename(columns = {'properties.nome': 'nome', 'properties.linee': 'linee', 'geometry.coordinates': 'coordinates'})
@@ -818,29 +837,32 @@ def etl_geo(args, data):
     fermate['LATITUDE'] = fermate.coordinates.apply(lambda x: x[1])
 
     #calculate distance to metro and concatenate
-    print('Beginning Metro\n')
+    print('\nBeginning Metro\n')
 
-    fermate['distanza_metro'] = dist_df(data, fermate, filter_var = None, label_filter = None, long_label = "LONGITUDE", lat_label = "LATITUDE")
-    fermate = fermate[['nome', 'linee', 'linee1', 'linee2', 'distanza_metro']]
-    data = pd.concat([data, temp], axis = 1)
+    vec_dist, vec_idx = dist_df(data, fermate, long_label = "LONGITUDE", lat_label = "LATITUDE", index = True)
+    
+    #duplicate row for each nearest to match data df
+    fermate = fermate.loc[vec_idx, ['nome', 'linee', 'linee1', 'linee2']].reset_index(drop = True)
+    fermate['distanza_metro'] = vec_dist
+
+    data = pd.concat([data, fermate], axis = 1)
 
     #json normalize parchi dataset
-    parchi = json_normalize(parchi_json['features'])
+    parchi = pd.json_normalize(parchi_json['features'])
     parchi = parchi.drop(['type', 'properties.ZONA', 'geometry.type', 'properties.PERIM_M', 'properties.AREA'], axis = 1)
 
     #rename dataset
     parchi = parchi.rename(columns = {'properties.AREA_MQ': 'area_parco',
                             'properties.PARCO': 'parco', 'geometry.coordinates': 'coordinates'})
 
-
-    parchi.coordinates = parchi.coordinates.apply(lambda x: np.array(take_first(x)).mean(axis = 0))
+    parchi['coordinates'] = parchi['coordinates'].apply(lambda x: np.array(take_first(x)).mean(axis = 0))
 
     #calculate longitude/latitude
     parchi['LONGITUDE'] = parchi.coordinates.apply(lambda x: x[0])
     parchi['LATITUDE'] = parchi.coordinates.apply(lambda x: x[1])
 
     #drop small park
-    parchi = parchi[parchi.area_parco>10000].reset_index(drop = True)
+    parchi = parchi[parchi['area_parco']>args.park_dimension].reset_index(drop = True)
 
     #drop everything without PARCO in the name
     parchi = parchi[['PARCO' in x for x in parchi['parco']]].reset_index(drop = True)
@@ -849,20 +871,22 @@ def etl_geo(args, data):
     parchi = parchi.loc[parchi['parco'].drop_duplicates().index].reset_index(drop = True)
 
     #calculate the distance of each home to nearest parco and append
-    print('Beginning park\n')
+    print('\nBeginning park\n')
 
-    parchi['distanza_parco'] = dist_df(data, parchi)
-    parchi = parchi[['distanza_parco', 'area_parco']].reset_index(drop = True)
+    vec_dist, vec_idx = dist_df(data, parchi, long_label = "LONGITUDE", lat_label = "LATITUDE", index = True)
+
+    parchi = parchi.loc[vec_idx, ['area_parco']].reset_index(drop = True)
+    parchi['distanza_parco'] = vec_dist
 
     data = pd.concat([data, parchi], axis = 1)
 
     #clean scuole
-    scuole_infanzia = json_normalize(scuole_infanzia_json['features'])
-    scuole_primarie = json_normalize(scuole_primarie_json['features'])
+    scuole_infanzia = pd.json_normalize(scuole_infanzia_json['features'])
+    scuole_primarie = pd.json_normalize(scuole_primarie_json['features'])
 
     #clean scuole secondarie
-    scuole_secondarie = json_normalize(scuole_secondarie_json['features'])
-    scuole_secondarie_2 = json_normalize(scuole_secondarie_2_json['features'])
+    scuole_secondarie = pd.json_normalize(scuole_secondarie_json['features'])
+    scuole_secondarie_2 = pd.json_normalize(scuole_secondarie_2_json['features'])
     
     #keep useful column
     scuole_infanzia = scuole_infanzia[['properties.GRADO', 'properties.TIPO', 'geometry.coordinates']]
@@ -889,29 +913,40 @@ def etl_geo(args, data):
     scuole = scuole.rename(columns = {'properties.GRADO': 'grado_scuola', 'geometry.coordinates': 'coordinates'})
 
     #calculate long, lat
-    scuole['LONGITUDE'] = scuole.coordinates.apply(lambda x: x[0])
-    scuole['LATITUDE'] = scuole.coordinates.apply(lambda x: x[1])
+    scuole['LONGITUDE'] = scuole['coordinates'].apply(lambda x: x[0])
+    scuole['LATITUDE'] = scuole['coordinates'].apply(lambda x: x[1])
 
     #unique grade of school list
     school_list = scuole['grado_scuola'].unique()
 
-    print('Beginning school\n')
+    print('\nBeginning school\n')
 
     #calculate nearest distance to selected grade school
     for school in school_list:
         print(f'\nSchool: {school}\n')
-        data[school+'_distanza'] = dist_df(data, negozi, filter_var = 'grado_scuola', label_filter = school)
+        data[school+'_distanza'] = dist_df(data, scuole, filter_var = 'grado_scuola',
+                                            label_filter = school, long_label = "LONGITUDE", lat_label = "LATITUDE")
 
-    print('Beginning criminality\n')
+    print('\nBeginning criminality\n')
 
     #calculate number of reati 1km of distance
-    for reato in ['violenza-sessuale', 'rapine', 'furti', 'omicidi', 'droga', 'campi-nomadi']:
+    criminality_keys = criminality.keys()
+    
+    for i, reato in enumerate(criminality_keys):
         print(f'\nReato: {reato}\n')
-        data[reato + '_distanza_1k'] = radius_json(data, criminality, radius = 1, filter_label = reato)
 
-    print('Beginning criminality radius\n')
+        number_calc = radius_json(data, criminality, radius = 1, filter_label = reato)
 
-    #calculate number of each reato with 1km of distance
-    data['reati_all_distanza_1k'] = radius_json(data, criminality_all, radius = 1)
+        #append only reato in reati_list and sum everithing for all criminality
+        if reato in args.reati_list:
+
+            data[reato + '_distanza_1k'] = number_calc
+
+        if i == 0:
+            all_criminality = np.array(number_calc)
+        else:
+            all_criminality += np.array(number_calc)
+
+    data['reati_all_distanza_1k'] = all_criminality
 
     return(data)

@@ -47,6 +47,15 @@ if __name__ == '__main__':
     #supermercati considered during geo_etl
     parser.add_argument("-supermercati", default = ['esselunga', 'carrefour', 'conad', 'coop', 'lidl'], type = list)
 
+    #minimum dimension of park
+    parser.add_argument("-park_dimension", default = 10000, type = float)
+
+    #reati list to use
+    parser.add_argument("-reati_list", default = ['violenza-sessuale', 'rapine', 'furti', 'omicidi', 'droga', 'campi-nomadi'], type = list)
+
+    #radius list for supermarker
+    parser.add_argument("-radius_list", default = [.25, .5, 1], type = list)
+
     args = parser.parse_args()
             
     #PHASE -1 HOME SCRAPE PAGE 
