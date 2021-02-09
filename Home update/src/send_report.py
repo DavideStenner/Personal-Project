@@ -9,11 +9,14 @@ root_dir = os.path.dirname(current_dir)
 output_dir = os.path.join(root_dir, 'output')
 notebook_path = os.path.join(output_dir, "Nuove Case.pdf")
 
-mail_list = [
-    'lorenza.Grappeja.lg@gmail.com',
-    'davide.stenner@gmail.com'
-]
-print('Sending email...\n')
+email_path = os.path.join(root_dir, "email_list/email_list.txt")
+
+    
+#import pre processed pdf file
+with open(email_path, 'r') as file:
+	mail_list = file.read().splitlines()
+
+print(f"Sending email... to {', '.join(mail_list)}\n")
 today = date.today()
 
 yag = yagmail.SMTP("stennerpy@gmail.com")
