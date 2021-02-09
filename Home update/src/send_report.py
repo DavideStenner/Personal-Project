@@ -12,7 +12,7 @@ notebook_path = os.path.join(output_dir, "Nuove Case.pdf")
 email_path = os.path.join(root_dir, "email_list/email_list.txt")
 
     
-#import pre processed pdf file
+#import email_list
 with open(email_path, 'r') as file:
 	mail_list = file.read().splitlines()
 
