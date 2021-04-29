@@ -1,0 +1,6 @@
+.venv/
+.vscode/
+src/scrape_utilities/__pycache__/
+src/etl/__pycache__/
+src/others/__pycache__/
+src/__pycache__/
