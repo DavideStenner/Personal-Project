@@ -6,9 +6,8 @@ from scrape_utilities.scrape_fun import get_pages
 
 
 def scraper_single_url(args, data):
-    
-    for i, url in tqdm(enumerate(data.Url)):
-
+    for i, url in tqdm(enumerate(data.Url[235:])):
+		
         if (i % 1000 == 0) & (i > 0):
             #wait 5 minutes
             time.sleep(300)
@@ -18,7 +17,7 @@ def scraper_single_url(args, data):
         try:
             #get pages
             soup = get_pages(url = url, args = args)
-            append = True
+            temp = get_url_info(soup)
 
         except:
 
@@ -27,19 +26,20 @@ def scraper_single_url(args, data):
 
             try:
                 soup = get_pages(url = url, args = args)
-                append = True
-
+                temp = get_url_info(soup)
+                
             except:
-                temp = pd.DataFrame({'Tipologia': [pd.NA], 'Anno_Costruzione': [pd.NA], 'Descrizione_Casa': [pd.NA]})
-                append = False
+                temp = pd.DataFrame(
+                    {
+                        'Tipologia': [pd.NA], 'Anno_Costruzione': [pd.NA], 'Descrizione_Casa': [pd.NA],
+                        'Stato': [pd.NA], 'Totale Piani': [pd.NA], 'Contratto': [pd.NA], 
+                        'disponibilità': [pd.NA]
+                    }
+                )
 
         #append each new info
-        if (i == 0) & append:
-            df = get_url_info(soup)
-
-        elif append:
-            temp = get_url_info(soup)
-            df = pd.concat([df, temp], axis = 0)
+        if (i == 0):
+            df = temp
 
         else:
             df = pd.concat([df, temp], axis = 0)
@@ -49,13 +49,15 @@ def scraper_single_url(args, data):
     return(df)
 
 def get_url_info(soup):
+    descrizione, anno, stato, totale_piani, contratto, disponibilità, tipologia = [pd.NA] * 7
     
     box_ = soup.find('dl', {'class': 'im-features__list'})
     
     title_ = box_.find_all('dt', {'class': 'im-features__title'})
-    element_ = box_.find_all('dt', {'class': 'im-features__value'})
-    descrizione = box_.find('div', {'class': 'im-description__text js-readAllText'}).get_text().lower().strip()
+    element_ = box_.find_all('dd', {'class': 'im-features__value'})
+    descrizione = soup.find('div', {'class': 'im-description__text js-readAllText'}).get_text().lower().strip()
 
+    
     try:
         efficienza = box_.find('span', {'class': 'im-features__energy'}).get_text().lower().strip()
     except:
@@ -79,6 +81,12 @@ def get_url_info(soup):
             disponibilità = element_[i].get_text().lower().strip()
 
     #return data frame
-    df = pd.DataFrame({'Tipologia': [tipologia], 'Anno_Costruzione': anno_, 'Descrizione_Casa': text_})
+    df = pd.DataFrame(
+        {
+            'Tipologia': [tipologia], 'Anno_Costruzione': [anno], 'Descrizione_Casa': [descrizione],
+            'Stato': [stato], 'Totale Piani': [totale_piani], 'Contratto': [contratto], 
+            'disponibilità': [disponibilità]
+        }
+    )
 
     return(df)

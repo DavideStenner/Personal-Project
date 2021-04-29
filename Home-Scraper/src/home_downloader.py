@@ -17,13 +17,13 @@ if __name__ == '__main__':
     parser.add_argument("-time_w8", default = 1.5, type = float)
 
     #Waiting time if not get 400
-    parser.add_argument("-time_implicit_w8", default = 600, type = float)
+    parser.add_argument("-time_implicit_w8", default = 30, type = float)
 
     #timeout for response
     parser.add_argument("-timeout", default = 30, type = float)
     
     #Minimum/Maximum superficie
-    parser.add_argument("-superfice_min", default = 40, type = float)
+    parser.add_argument("-superfice_min", default = 35, type = float)
     parser.add_argument("-superfice_max", default = 200, type = float)
 
     #Base url of immobiliare

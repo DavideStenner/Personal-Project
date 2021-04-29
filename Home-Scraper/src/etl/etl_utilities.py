@@ -10,6 +10,81 @@ import json
 from geopy import distance
 from tqdm import tqdm
 import os
+import gc
+
+def free_space(del_list):
+    for name in del_list:
+        if not name.startswith('_'):
+            del globals()[name]
+    gc.collect()
+    
+def sd(col, max_loss_limit=0.001, avg_loss_limit=0.001, na_loss_limit=0, n_uniq_loss_limit=0, fillna=0):
+    """
+    max_loss_limit - don't allow any float to lose precision more than this value. Any values are ok for GBT algorithms as long as you don't unique values.
+                     See https://en.wikipedia.org/wiki/Half-precision_floating-point_format#Precision_limitations_on_decimal_values_in_[0,_1]
+    avg_loss_limit - same but calculates avg throughout the series.
+    na_loss_limit - not really useful.
+    n_uniq_loss_limit - very important parameter. If you have a float field with very high cardinality you can set this value to something like n_records * 0.01 in order to allow some field relaxing.
+    """
+    is_float = str(col.dtypes)[:5] == 'float'
+    na_count = col.isna().sum()
+    n_uniq = col.nunique(dropna=False)
+    try_types = ['float16', 'float32']
+
+    if na_count <= na_loss_limit:
+        try_types = ['int8', 'int16', 'float16', 'int32', 'float32']
+
+    for type in try_types:
+        col_tmp = col
+
+        # float to int conversion => try to round to minimize casting error
+        if is_float and (str(type)[:3] == 'int'):
+            col_tmp = col_tmp.copy().fillna(fillna).round()
+
+        col_tmp = col_tmp.astype(type)
+        max_loss = (col_tmp - col).abs().max()
+        avg_loss = (col_tmp - col).abs().mean()
+        na_loss = np.abs(na_count - col_tmp.isna().sum())
+        n_uniq_loss = np.abs(n_uniq - col_tmp.nunique(dropna=False))
+
+        if max_loss <= max_loss_limit and avg_loss <= avg_loss_limit and na_loss <= na_loss_limit and n_uniq_loss <= n_uniq_loss_limit:
+            return col_tmp
+
+    # field can't be converted
+    return col
+
+
+def reduce_mem_usage_sd(df, deep=True, verbose=False, obj_to_cat=False):
+    numerics = ['int16', 'uint16', 'int32', 'uint32', 'int64', 'uint64', 'float16', 'float32', 'float64']
+    start_mem = df.memory_usage(deep=deep).sum() / 1024 ** 2
+    for col in tqdm(df.columns):
+        col_type = df[col].dtypes
+
+        # collect stats
+        na_count = df[col].isna().sum()
+        n_uniq = df[col].nunique(dropna=False)
+        
+        # numerics
+        if col_type in numerics:
+            df[col] = sd(df[col])
+
+        # strings
+        if (col_type == 'object') and obj_to_cat:
+            df[col] = df[col].astype('category')
+        
+        if verbose:
+            print(f'Column {col}: {col_type} -> {df[col].dtypes}, na_count={na_count}, n_uniq={n_uniq}')
+        new_na_count = df[col].isna().sum()
+        if (na_count != new_na_count):
+            print(f'Warning: column {col}, {col_type} -> {df[col].dtypes} lost na values. Before: {na_count}, after: {new_na_count}')
+        new_n_uniq = df[col].nunique(dropna=False)
+        if (n_uniq != new_n_uniq):
+            print(f'Warning: column {col}, {col_type} -> {df[col].dtypes} lost unique values. Before: {n_uniq}, after: {new_n_uniq}')
+
+    end_mem = df.memory_usage(deep=deep).sum() / 1024 ** 2
+    percent = 100 * (start_mem - end_mem) / start_mem
+    print('Mem. usage decreased from {:5.2f} Mb to {:5.2f} Mb ({:.1f}% reduction)'.format(start_mem, end_mem, percent))
+    return df
 
 def etl_1(data, url_):
     #function which return anno in number othwerwise null
@@ -133,8 +208,12 @@ def etl_1(data, url_):
             if (temp is not None):
                 
                 temp = re.search(r'%s (.*?)\,' %lab_, x)
-                address = clean_special(temp.group(0))        
-                continue
+                try:
+                    address_regex = temp.group(0) #if lab_ is not inside the name of the address continue else skip
+                    address = clean_special(address_regex)
+                except:
+                    pass
+
         #clean ending string    
         address = formatter(address)   
         return(address)
@@ -390,58 +469,62 @@ def etl_2(args, data):
     data = data.loc[data.indirizzo != ''].reset_index(drop = True)
     
     #read open dataset
-    #nil
-    nil = pd.read_csv(os.path.join(args.path_datasetMilano, 'ds634_civici_quartieri_zone_nil_cap_vie_20180518-unicode.csv'), delimiter =';')
     
     #aler list
     aler_home = pd.read_pickle(os.path.join(args.path_openMilano, 'data_case_popolari.pkl'))
     
-    #nil geo
-    nil_geo = pd.read_csv(os.path.join(args.path_datasetMilano, 'ds634_civici_coordinategeografiche_20200203.csv'), delimiter =';')
+    #nil
+    nil = pd.read_csv(os.path.join(args.path_datasetMilano, 'ds634_civici_coordinategeografiche.csv'))
     
     
     #extract number address 
-    aler_home['number_address'] = aler_home.number_address.apply(lambda x: exctract_number(x))
+    aler_home['number_address'] = aler_home['number_address'].apply(lambda x: exctract_number(x))
 
     #clean indirizzo by concatenate address and number address
-    aler_home['indirizzo'] = aler_home.address + ' ' + aler_home.number_address
+    aler_home['indirizzo'] = aler_home['address'] + ' ' + aler_home['number_address']
 
     #special aler formatter --> for later to calculate score of intersection with address lists
-    aler_home['indirizzo'] = aler_home.indirizzo.apply(lambda x: aler_formatter(x))
+    aler_home['indirizzo'] = aler_home['indirizzo'].apply(lambda x: aler_formatter(x))
 
+    #interest columns name
+    interest_col = ['RESIDENZIALE', 'MUNICIPIO', 'ID_NIL', 'NIL', 'TIPO', 'NUMEROCOMPLETO', 'DENOMINAZIONE']
+    
+    #convert each to string
+    #for col in interest_col:
+    #    nil[col] = nil[col].copy().astype(str)
+    
     #calculate mean for long and lat because we have more long lat for each address
-    nil_geo_mean = nil_geo.loc[:, ['NUMEROCOMPLETO', 'DENOMINAZIONE', 'LONG_WGS84', 'LAT_WGS84']].reset_index(drop = True).groupby(['NUMEROCOMPLETO', 'DENOMINAZIONE']).mean()
-    nil_geo = pd.DataFrame(nil_geo_mean).reset_index()
+    nil_mean = nil.loc[
+        :, interest_col + ['LONG_WGS84', 'LAT_WGS84']
+    ].reset_index(drop = True).groupby(interest_col).mean()
+    
+    nil = pd.DataFrame(nil_mean).reset_index()
     
     #change numero completo to str
-    nil_geo['NUMEROCOMPLETO'] = nil_geo['NUMEROCOMPLETO'].astype(str)
+    nil['NUMEROCOMPLETO'] = nil['NUMEROCOMPLETO'].astype(str)
     
-    #merge back to nil new lat, long information
-    nil = nil.merge(nil_geo, how = 'left',
-                    left_on = ['DENOMINAZIONE VIA', 'NUMERO CIVICO'],
-                    right_on = ['DENOMINAZIONE', 'NUMEROCOMPLETO'])
-
     #take out row with long null (lat will be null also)
-    nil = nil[~nil.LONG_WGS84.isnull()].reset_index(drop = True)
+    nil = nil[~nil['LONG_WGS84'].isnull()].reset_index(drop = True)
     
-    #little clean of DUG
-    nil.DUG = nil.DUG.apply(lambda s: s.lower())
+    #little clean of Tipo ( Via, piazza, ...)
+    nil['TIPO'] = nil['TIPO'].apply(lambda s: s.lower())
 
     #little clean and extraction of numero civico
-    nil['NUMERO CIVICO'] = nil['NUMERO CIVICO'].apply(lambda s: number_nil_clean(s))
+    #nil['NUMERO CIVICO'] = nil['NUMERO CIVICO'].apply(lambda s: number_nil_clean(s))
 
     #little clean of denominazione via
-    nil['DENOMINAZIONE VIA'] = nil['DENOMINAZIONE VIA'].apply(lambda s: s.lower())
+    #nil['DENOMINAZIONE'] = nil['DENOMINAZIONE'].apply(lambda s: s.lower())
 
-    #Addedd indirizzo by concatenation of dug, denominazione via and numero civico
-    nil['indirizzo'] = nil['DUG'] + ' ' + nil['DENOMINAZIONE VIA'] + ' ' + nil['NUMERO CIVICO']
-
+    #Addedd indirizzo by concatenation of Tipo, denominazione via and numero civico
+    nil['indirizzo'] = nil['TIPO'] + ' ' + nil['DENOMINAZIONE'] + ' ' + nil['NUMEROCOMPLETO']
+    nil['indirizzo'] = nil['indirizzo'].apply(lambda x: x.lower())
+    
     #drop each duplicates
-    nil = nil.loc[nil[['DENOMINAZIONE VIA', 'indirizzo', 'NUMERO CIVICO']].drop_duplicates().index].reset_index(drop = True)
-
+    nil = nil.drop_duplicates(['DENOMINAZIONE', 'indirizzo', 'NUMEROCOMPLETO']).reset_index(drop = True)
+    
     #apply special space to add space to each special character --> word_tokenize --> sort --> join with ' ' to create join key
-    data['join_key'] = data.indirizzo.apply(lambda s: ' '.join(sorted(word_tokenize(special_space(s)))))
-    nil['join_key'] = nil.indirizzo.apply(lambda s: ' '.join(sorted(word_tokenize(special_space(abbreviazioni_replace(s))))))
+    data['join_key'] = data['indirizzo'].apply(lambda s: ' '.join(sorted(word_tokenize(special_space(s)))))
+    nil['join_key'] = nil['indirizzo'].apply(lambda s: ' '.join(sorted(word_tokenize(special_space(abbreviazioni_replace(s))))))
 
     
     ################# ALER CHECKER
@@ -453,24 +536,24 @@ def etl_2(args, data):
     missing_pos = np.where(temp.isnull())[0].tolist()
     
     #special cleaning for aler wich deletes special characters --> word_tokenize --> create set
-    segment_1 = aler_home.indirizzo.apply(lambda s: set(word_tokenize(special_delete(s))))
-    segment_2 = nil.indirizzo.apply(lambda s: set(word_tokenize(special_delete(abbreviazioni_replace(s)))))
+    segment_1 = aler_home['indirizzo'].apply(lambda s: set(word_tokenize(special_delete(s))))
+    segment_2 = nil['indirizzo'].apply(lambda s: set(word_tokenize(special_delete(abbreviazioni_replace(s)))))
     
     #calculate corrected indirizzo by checking which indirizzo from nil have higher score with aler_home indirizzo by checking intersection of word/number
     logger_aler.info('*'*100 + '\n\nBeginning scorer for aler\n\n')
     aler_home.loc[missing_pos, 'indirizzo'] = scorer(segment_1 = segment_1,
                                                      segment_2 = segment_2,
-                                                     indirizzo = nil.indirizzo,
-                                                     original = aler_home.indirizzo,
+                                                     indirizzo = nil['indirizzo'],
+                                                     original = aler_home['indirizzo'],
                                                      missing_pos = missing_pos,
                                                      logger = logger_aler)
     
     #take out every row with missing address after correction 
-    mask_aler = data.indirizzo.isnull()
+    mask_aler = data['indirizzo'].isnull()
     aler_home = aler_home.loc[~mask_aler].reset_index(drop = True)
     
     #little clean and join with nil after correction of address
-    aler_home['indirizzo'] = aler_home.indirizzo.apply(lambda x: aler_formatter(x))
+    aler_home['indirizzo'] = aler_home['indirizzo'].apply(lambda x: aler_formatter(x))
 
     #join with nil
     aler_home = aler_home.merge(nil[['LONG_WGS84', 'LAT_WGS84', 'join_key']], how = 'left',
@@ -482,8 +565,8 @@ def etl_2(args, data):
 
     ######################### SINGLE ERROR CHECK
     #calculate set over join_key for scraped dataset and nil
-    fakeword = set(word_tokenize(' '.join(data.join_key)))
-    realword = set(word_tokenize(' '.join(nil.join_key)))
+    fakeword = set(word_tokenize(' '.join(data['join_key'])))
+    realword = set(word_tokenize(' '.join(nil['join_key'])))
 
     #list of real word
     realword_list = list(realword)
@@ -533,7 +616,7 @@ def etl_2(args, data):
     data = data[[np.sum([y in x for y in row_with_mispell])==0 for x in data.indirizzo]].reset_index(drop = True)
     
     #special cleaning to create join_key
-    data['join_key'] = data.indirizzo.apply(lambda s: ' '.join(sorted(word_tokenize(special_space(s)))))
+    data['join_key'] = data['indirizzo'].apply(lambda s: ' '.join(sorted(word_tokenize(special_space(s)))))
     
     #check if there are new word wich doesn't match with real list
     joined_set = set(word_tokenize(' '.join(data['join_key'])))
@@ -546,33 +629,33 @@ def etl_2(args, data):
     ###########################
 
     #merge with nil to get NIL
-    temp = data.merge(nil[['join_key','QUARTIERE', 'MUNICIPIO', 'ID_NIL', 'NIL']],
+    temp = data.merge(nil[['join_key', 'NIL']],
            how = 'left', left_on = 'join_key', right_on = 'join_key')['NIL']
 
     #take out NIL position
     missing_pos = np.where(temp.isnull())[0].tolist()
 
     #calculate (after mispel correction) set to calculate score of intersection
-    segment_1 = data.indirizzo.apply(lambda s: set(word_tokenize(special_delete(s))))
-    segment_2 = nil.indirizzo.apply(lambda s: set(word_tokenize(special_delete(abbreviazioni_replace(s)))))
+    segment_1 = data['indirizzo'].apply(lambda s: set(word_tokenize(special_delete(s))))
+    segment_2 = nil['indirizzo'].apply(lambda s: set(word_tokenize(special_delete(abbreviazioni_replace(s)))))
     
     #calculate score of intersection
-    logger_data.info('*'*100 + 'Beginning scorer for scraped dataset\n\n')
+    logger_data.info('*'*100 + '\n\nBeginning scorer for scraped dataset\n\n')
     data.loc[missing_pos, 'indirizzo'] = scorer(segment_1 = segment_1,
                                                  segment_2 = segment_2,
-                                                 indirizzo = nil.indirizzo,
-                                                 original = data.indirizzo,
+                                                 indirizzo = nil['indirizzo'],
+                                                 original = data['indirizzo'],
                                                  missing_pos = missing_pos,
                                                  logger = logger_data)
 
     #take out null address
-    data = data[~data.indirizzo.isnull()].reset_index(drop = True)
+    data = data[~data['indirizzo'].isnull()].reset_index(drop = True)
     
     #create join_key
-    data['join_key'] = data.indirizzo.apply(lambda s: ' '.join(sorted(word_tokenize(special_space(s)))))
+    data['join_key'] = data['indirizzo'].apply(lambda s: ' '.join(sorted(word_tokenize(special_space(s)))))
 
     #merge with nil
-    data = data.merge(nil[['join_key','QUARTIERE', 'MUNICIPIO', 'ID_NIL', 'NIL', 'LONG_WGS84', 'LAT_WGS84']],
+    data = data.merge(nil[['join_key','RESIDENZIALE', 'MUNICIPIO', 'ID_NIL', 'NIL', 'LONG_WGS84', 'LAT_WGS84']],
            how = 'left', left_on = 'join_key', right_on = 'join_key')
     
     return(data, aler_home)
@@ -728,10 +811,10 @@ def etl_geo(args, data):
     try:
         
         missing_file = 'economia_media_grande_distribuzione_coord.csv'
-        negozi = pd.read_csv(os.path.join(args.path_datasetMilano, 'economia_media_grande_distribuzione_coord.csv'), delimiter =',')
+        negozi = pd.read_csv(os.path.join(args.path_datasetMilano, 'economia_media_grande_distribuzione_coord.csv'))
 
         missing_file = 'ds634_civici_coordinategeografiche.csv'
-        nil_geo = pd.read_csv(os.path.join(args.path_datasetMilano, 'ds634_civici_coordinategeografiche.csv'), delimiter =',')
+        nil_geo = pd.read_csv(os.path.join(args.path_datasetMilano, 'ds634_civici_coordinategeografiche.csv'))
 
         missing_file = 'tpl_metrofermate.geojson'
         with open(os.path.join(args.path_datasetMilano, 'tpl_metrofermate.geojson')) as f:
@@ -741,20 +824,20 @@ def etl_geo(args, data):
         with open(os.path.join(args.path_datasetMilano, 'parchi.geojson')) as f:
             parchi_json = json.load(f)
 
-        missing_file = 'scuoleinfanzia.geojson'
-        with open(os.path.join(args.path_datasetMilano, 'scuoleinfanzia.geojson')) as f:
+        missing_file = 'scuole_infanzia.geojson'
+        with open(os.path.join(args.path_datasetMilano, 'scuole_infanzia.geojson')) as f:
             scuole_infanzia_json = json.load(f)
 
-        missing_file = 'scuoleprimarie.geojson'
-        with open(os.path.join(args.path_datasetMilano, 'scuoleprimarie.geojson')) as f:
+        missing_file = 'scuole_primarie.geojson'
+        with open(os.path.join(args.path_datasetMilano, 'scuole_primarie.geojson')) as f:
             scuole_primarie_json = json.load(f)
 
-        missing_file = 'scuolesecondarie1grado.geojson'
-        with open(os.path.join(args.path_datasetMilano, 'scuolesecondarie1grado.geojson')) as f:
+        missing_file = 'scuole_secondarie_1grado.geojson'
+        with open(os.path.join(args.path_datasetMilano, 'scuole_secondarie_1grado.geojson')) as f:
             scuole_secondarie_json = json.load(f)
 
-        missing_file = 'scuolesecondarie2grado.geojson'
-        with open(os.path.join(args.path_datasetMilano, 'scuolesecondarie2grado.geojson')) as f:
+        missing_file = 'scuole_secondarie_secondogrado.geojson'
+        with open(os.path.join(args.path_datasetMilano, 'scuole_secondarie_secondogrado.geojson')) as f:
             scuole_secondarie_2_json = json.load(f)
 
         missing_file = 'criminality_info.pkl'
@@ -849,7 +932,8 @@ def etl_geo(args, data):
 
     #json normalize parchi dataset
     parchi = pd.json_normalize(parchi_json['features'])
-    parchi = parchi.drop(['type', 'properties.ZONA', 'geometry.type', 'properties.PERIM_M', 'properties.AREA'], axis = 1)
+    parchi = parchi[['properties.AREA_MQ', 'properties.PARCO', 'geometry.coordinates']]
+    #parchi = parchi.drop(['type', 'properties.ZONA', 'geometry.type', 'properties.PERIM_M', 'properties.AREA'], axis = 1)
 
     #rename dataset
     parchi = parchi.rename(columns = {'properties.AREA_MQ': 'area_parco',
