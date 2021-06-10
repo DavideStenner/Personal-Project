@@ -18,11 +18,5 @@ CONTENT_STYLE = {
     "padding": "2rem 1rem",
 }
 
-####
-##DATASET
-DF = pd.read_csv('./dataset/dataset.csv')
-METADATA = pd.read_excel('./dataset/metadata.xlsx')
-
-NUMERIC_COL = METADATA.loc[METADATA['type'] == 'number', 'col_name'].tolist()
-STRING_COL = METADATA.loc[~METADATA['type'].isin(['number', 'date']), 'col_name'].tolist()
-DATE_COL = METADATA.loc[METADATA['type'] == 'date', 'col_name'].tolist()
+PATH_DATA = './dataset/dataset.csv'
+PATH_METADATA = './dataset/metadata.xlsx'

@@ -5,26 +5,26 @@ from dash.dependencies import Input, Output
 import pandas as pd
 
 from app import app
-from apps import app1, app2, main_page
+from apps import app1, app2, main_page, upload_file
 from configuration.constant import SIDEBAR_STYLE, CONTENT_STYLE
 
+first_page = html.Div(
+    id = 'main_page'
+)
 
 sidebar = html.Div(
     [
         dbc.Nav(
             [
                 dbc.NavLink("Summary", href="/", active="exact"),
-                dbc.NavLink("Page 1", href="/apps/app1", active="exact"),
-                dbc.NavLink("Page 2", href="/apps/app2", active="exact"),
+                dbc.NavLink('Upload File', href="/apps/upload_file", active="exact")
             ],
             vertical=True,
             pills=True,
-        ),
+        )
     ],
     style=SIDEBAR_STYLE,
 )
-
-df = pd.read_csv('./dataset/dataset.csv')
 
 app.layout = html.Div([
     dcc.Location(id='url', refresh=True),
@@ -37,10 +37,8 @@ app.layout = html.Div([
 def display_page(pathname):
     if pathname == '/':
         return main_page.layout
-    if pathname == '/apps/app1':
-        return app1.layout
-    elif pathname == '/apps/app2':
-        return app2.layout
+    elif pathname == '/apps/upload_file':
+        return upload_file.layout
     else:
         return dbc.Jumbotron(
         [

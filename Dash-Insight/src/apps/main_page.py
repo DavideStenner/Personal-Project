@@ -9,34 +9,45 @@ import json
 import plotly.graph_objects as go
 import numpy as np
 from app import app
-from configuration.constant import NUMERIC_COL, STRING_COL, DF
+from utilities.import_data import import_dataset, import_metadata
 
-df = pd.read_csv('./dataset/dataset.csv')
+def blank_fig():
+    fig = go.Figure(go.Scatter(x=[], y = []))
+    fig.update_layout(template = None)
+    fig.update_xaxes(showgrid = False, showticklabels = False, zeroline=False)
+    fig.update_yaxes(showgrid = False, showticklabels = False, zeroline=False)
+    
+    return fig
 
 figure_table = html.Div([
-    html.Div(id='summary-table-container')
+    dcc.Graph(
+        id='summary-table',
+        figure = blank_fig()
+    )
 ])
 
 figure_hist = html.Div([
-    html.Div(id='hist-container')
+    dcc.Graph(
+            id='barplot-figure',
+            figure = blank_fig()
+    )
 ])
 
-dropdown_element = dcc.Dropdown(
-                        id='dropdown-string-value',
-                        options=[
-                            {'label': col, 'value': col}
-                            for col in STRING_COL
-                        ],
-                        value=STRING_COL[0],
-                        clearable=False
-                    )
+dropdown_container = html.Div(
+    [
+        dcc.Dropdown(
+            id='dropdown-string-value',
+            options=[],
+            clearable=False
+        )
+    ]
+)
+
 table = html.Div([
     DataTable(
         id='datatable-interactivity',
-        columns=[
-            {"name": i, "id": i} for i in DF.columns
-        ],
-        data=DF.to_dict('records'),
+        columns=None,
+        data=None,
         editable=False,
         filter_action="native",
         sort_action="native",
@@ -71,13 +82,13 @@ layout = html.Div([
             html.Div(
                 [
                     html.H3('Dataset Statistics'),
-                    html.Br(),
+                    html.Br()
                 ],
                 style={'width': '75%', 'display': 'inline-block'}
             ),
             html.Div(
                 [
-                   dropdown_element 
+                   dropdown_container 
                 ],
                 style={'width': '24%', 'display': 'inline-block'}
             )
@@ -104,53 +115,115 @@ layout = html.Div([
     ]),
 ])
 
+#update the dataset
+@app.callback(
+    [   
+        Output('datatable-interactivity', 'columns'),
+        Output('datatable-interactivity', 'data')],
+    Input('url', "pathname"))
+def update_dataset(_):
+    df = import_dataset()
+
+    #need to import something
+    if df is None:
+        return [None, None]
+
+    columns = [
+        {"name": i, "id": i} for i in df.columns
+    ]
+    return [columns, df.to_dict('records')]
+
 #Update number of rows
 @app.callback(
     Output('information-dataframe-container', "children"),
-    Input('datatable-interactivity', "derived_virtual_data"))
-def update_info_rows(rows):
-    dff = DF if rows is None else pd.DataFrame(rows)
+    [
+        Input('datatable-interactivity', "derived_virtual_data"),
+        Input('url', "pathname")
+    ])
+def update_info_rows(rows, _):
+
+    df = import_dataset()
+    
+    #need to import something
+    if df is None:
+        return [None]
+
+    dff = df if rows is None else pd.DataFrame(rows)
     num_rows, num_cols = dff.shape
 
     return [
         html.P(f'The dataset has {num_rows} rows and {num_cols} columns.')
     ]
 
-#Updates summary table
+#Update dropdown
 @app.callback(
-    Output('hist-container', "children"),
-    Input('dropdown-string-value', 'value'),
-    Input('datatable-interactivity', "derived_virtual_data"))
-def update_graphs(string_col, rows):
+        Output('dropdown-string-value', "options"),
+        Input('url', "pathname"))
+def update_info_rows(_):
 
-    dff = DF if rows is None else pd.DataFrame(rows)
+    _, metadata_dic = import_metadata(get_type_colname = True)
+
+    #need to import something
+    if metadata_dic is None:
+        return []
+
+    options = [
+        {'label': col, 'value': col}
+        for col in metadata_dic['string']
+    ]
+
+    return options
+
+
+#Updates Bar plot
+@app.callback(
+    Output('barplot-figure', "figure"),
+    Input('dropdown-string-value', 'value'),
+    Input('datatable-interactivity', "derived_virtual_data"),
+    Input('url', "pathname"))
+def update_graphs(string_col, rows, _):
+
+    if string_col is None:
+        return blank_fig()
+
+    df = import_dataset()
+
+    dff = df if rows is None else pd.DataFrame(rows)
 
     #coherce to string... integer will be displayed as str
     dff_string_unique = [str(x) for x in dff[string_col].unique().tolist()]
     dff_string_count = [(dff[string_col] == cat).sum() for cat in dff[string_col].unique()]
 
-    fig_barplot = [
-        dcc.Graph(
-            id=string_col,
-            figure = go.Figure(
-                data = go.Bar(
-                    x = dff_string_unique,
-                    y = dff_string_count
-                ),
-                layout = go.Layout(template = 'plotly_white', title = string_col, margin={'l': 0})
-            )
-        )
-    ]
+    fig = go.Figure(
+        data = go.Bar(
+            x = dff_string_unique,
+            y = dff_string_count
+        ),
+        layout = go.Layout(template = 'plotly_white', title = string_col, margin={'l': 0})
+    )
 
-    return fig_barplot
+    return fig
 
 #Updates summary table
 @app.callback(
-    Output('summary-table-container', "children"),
-    Input('datatable-interactivity', "derived_virtual_data"))
-def update_graphs(rows):
+    Output('summary-table', "figure"),
+    Input('datatable-interactivity', "derived_virtual_data"),
+    Input('url', "pathname"))
+def update_graphs(rows, _):
     
-    dff = DF if rows is None else pd.DataFrame(rows)
+    _, metadata_type = import_metadata(get_type_colname = True)
+
+    df = import_dataset()
+
+    #need to import something
+    if (df is None) or (metadata_type is None):
+        return blank_fig()
+
+
+    dff = df if rows is None else pd.DataFrame(rows)
+
+    numeric_col = [x for x in metadata_type['numeric'] if x in dff.columns]
+
     numeric_info = [
         [
             col,
@@ -159,15 +232,13 @@ def update_graphs(rows):
             np.round(dff[col].median(), 2),
             np.round(dff[col].min(), 2),
             np.round(dff[col].max(), 2),
-        ] for col in NUMERIC_COL
+        ] for col in numeric_col
     ]
 
     #reshape
     numeric_info = np.array(numeric_info).T.tolist()
 
-    fig_table = dcc.Graph(
-        id='summary-table',
-        figure = go.Figure(
+    fig_table = go.Figure(
             data=[
                 go.Table(
                     header=dict(values=['Columns', 'Mean', 'Std', 'Median', 'Min', 'Max'],
@@ -181,8 +252,5 @@ def update_graphs(rows):
             ],
             layout = go.Layout(template = 'plotly_white', margin={'l': 0})
         )
-    )
 
-    return [
-        fig_table
-    ]
+    return fig_table
