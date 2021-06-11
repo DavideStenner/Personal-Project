@@ -1,23 +1,14 @@
-from os import stat
 import dash_core_components as dcc
 import dash_html_components as html
-import dash_bootstrap_components as dbc
 from dash.dependencies import Input, Output
+from dash_html_components import H6
 import pandas as pd
 from dash_table import DataTable
-import json
 import plotly.graph_objects as go
 import numpy as np
 from app import app
 from utilities.import_data import import_dataset, import_metadata
-
-def blank_fig():
-    fig = go.Figure(go.Scatter(x=[], y = []))
-    fig.update_layout(template = None)
-    fig.update_xaxes(showgrid = False, showticklabels = False, zeroline=False)
-    fig.update_yaxes(showgrid = False, showticklabels = False, zeroline=False)
-    
-    return fig
+from utilities.graph import blank_fig
 
 figure_table = html.Div([
     dcc.Graph(
@@ -35,6 +26,7 @@ figure_hist = html.Div([
 
 dropdown_container = html.Div(
     [
+        'Select Categorical Column',
         dcc.Dropdown(
             id='dropdown-string-value',
             options=[],
@@ -67,7 +59,7 @@ table = html.Div([
         style_header={
             'backgroundColor': 'rgb(230, 230, 230)',
             'fontWeight': 'bold'
-        }
+        },
     ),
     html.Div(id='datatable-interactivity-container')
 ])
@@ -101,16 +93,17 @@ layout = html.Div([
     ]),
     html.Div([
         html.Br(),
-        html.H5('Summary Table'),
         html.Div([
+            html.H6('Summary Table'),
             figure_table
             ], 
-            style={'width': '49%', 'display': 'inline-block'}
+            style={'width': '40%', 'display': 'inline-block'}
         ),
         html.Div([
+            html.H6('Histogram'),
             figure_hist
             ], 
-            style={'width': '49%', 'display': 'inline-block'}
+            style={'width': '40%', 'display': 'inline-block'}
         ),
     ]),
 ])
@@ -122,6 +115,7 @@ layout = html.Div([
         Output('datatable-interactivity', 'data')],
     Input('url', "pathname"))
 def update_dataset(_):
+    
     df = import_dataset()
 
     #need to import something
@@ -131,6 +125,7 @@ def update_dataset(_):
     columns = [
         {"name": i, "id": i} for i in df.columns
     ]
+
     return [columns, df.to_dict('records')]
 
 #Update number of rows
@@ -155,7 +150,7 @@ def update_info_rows(rows, _):
         html.P(f'The dataset has {num_rows} rows and {num_cols} columns.')
     ]
 
-#Update dropdown
+#Update dropdown for string
 @app.callback(
         Output('dropdown-string-value', "options"),
         Input('url', "pathname"))
@@ -189,6 +184,10 @@ def update_graphs(string_col, rows, _):
     df = import_dataset()
 
     dff = df if rows is None else pd.DataFrame(rows)
+
+    # if you filter and have empty dataframe
+    if (string_col not in dff.columns):
+        return blank_fig()
 
     #coherce to string... integer will be displayed as str
     dff_string_unique = [str(x) for x in dff[string_col].unique().tolist()]

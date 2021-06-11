@@ -5,7 +5,7 @@ from configuration.constant import PATH_DATA, PATH_METADATA
 def import_dataset():
     try:
         data = pd.read_csv(PATH_DATA)
-        
+
     except OSError:
         return None
 
