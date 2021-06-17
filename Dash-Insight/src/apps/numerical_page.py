@@ -1,7 +1,7 @@
 import dash_bootstrap_components as dbc
 import dash_core_components as dcc
 import dash_html_components as html
-from dash.dependencies import Input, Output
+from dash.dependencies import Input, Output, State
 import pandas as pd
 from dash_table import DataTable
 import plotly.graph_objects as go
@@ -9,19 +9,21 @@ import numpy as np
 import plotly.express as px
 from app import app
 from utilities.import_data import import_dataset, import_metadata
-from utilities.graph import blank_fig
+from utilities.graph import (
+    blank_fig, get_scatter, get_histogram
+)
 
 figure_scatter = html.Div([
     dcc.Graph(
         id='numeric-multi-figure',
-        figure = blank_fig()
+        figure = blank_fig(),
     )
 ])
 
 figure_hist = html.Div([
     dcc.Graph(
             id='categorical-multi-figure',
-            figure = blank_fig()
+            figure = blank_fig(),
     )
 ])
 
@@ -109,7 +111,7 @@ def update_scatter_dropdown(value, _):
 @app.callback(
         Output('dropdown-hist-value', "options"),
         Input('url', "pathname"))
-def update_scatter_dropdown(_):
+def update_hist_dropdown(_):
 
     _, metadata_dic = import_metadata(get_type_colname = True)
 
@@ -128,14 +130,20 @@ def update_scatter_dropdown(_):
 @app.callback(
     Output('numeric-multi-figure', "figure"),
     Input('dropdown-scatterplot-value', "value"),
+    Input('categorical-multi-figure', 'clickData'),
     Input('url', "pathname"))
-def update_scatter(selection, _):
-
+def update_scatter(selection, clicked, _):
+    
     #blank before selection
     if (selection is None) or (selection == []):
         return blank_fig()
 
     df = import_dataset()
+
+    #filter data index based on clicked hist
+    if clicked is not None:
+        clicked_index = clicked['points'][0]['pointNumbers']
+        df = df[df.index.isin(clicked_index)]
 
     #assign x
     x_selection = selection[0]
@@ -143,19 +151,11 @@ def update_scatter(selection, _):
     #return histogram
     if (len(selection) == 1):
         
-        fig = px.histogram(
-            df, x=x_selection, #color="Fine Corso",
-            template = 'plotly_white',
-            labels = {x_selection: x_selection.capitalize()},
-        )
+        fig = get_histogram(df, x_selection)
     else:
         y_selection = selection[1]
-        fig = px.scatter(
-            df, x=x_selection, y=y_selection, #color="species",
-            template = 'plotly_white',
-            # size='petal_length', hover_data=['petal_width']
-        )
 
+        fig = get_scatter(df, x_selection, y_selection)
 
 
     return fig
@@ -164,21 +164,29 @@ def update_scatter(selection, _):
 @app.callback(
     Output('categorical-multi-figure', "figure"),
     Input('dropdown-hist-value', "value"),
-    Input('url', "pathname"))
-def update_hist(selection, _):
-
+    Input('numeric-multi-figure', 'relayoutData'),
+    Input('url', "pathname"),
+    State('dropdown-scatterplot-value', "value"))
+def update_hist(selection, zoom_range, _, selected_col):
     #blank before selection
     if (selection is None) or (selection == []):
         return blank_fig()
 
     df = import_dataset()
 
+    #list of key to check if 'auto' is in any key
+    is_auto_zoom = any(['auto' in x for x in zoom_range.keys()])
+
+    if not is_auto_zoom:
+        name_range_list = ['x', 'y']
+        for i, col in enumerate(selected_col):
+            axis_string = f'{name_range_list[i]}axis'
+            df = df[
+                    (df[col] >= zoom_range[f'{axis_string}.range[0]']) &
+                    (df[col] <= zoom_range[f'{axis_string}.range[1]'])
+                ]
     df[selection] = df[selection].astype(str)
 
-    fig = px.histogram(
-        df, x = selection,
-        template = 'plotly_white',
-        labels = {selection: selection.capitalize()},
-    )
+    fig = get_histogram(df, selection)
 
     return fig

@@ -154,7 +154,7 @@ def update_info_rows(rows, _):
 @app.callback(
         Output('dropdown-string-value', "options"),
         Input('url', "pathname"))
-def update_info_rows(_):
+def update_dropdown(_):
 
     _, metadata_dic = import_metadata(get_type_colname = True)
 
@@ -208,7 +208,7 @@ def update_graphs(string_col, rows, _):
     Output('summary-table', "figure"),
     Input('datatable-interactivity', "derived_virtual_data"),
     Input('url', "pathname"))
-def update_graphs(rows, _):
+def update_table(rows, _):
     
     _, metadata_type = import_metadata(get_type_colname = True)
 
