@@ -1,6 +1,7 @@
 import dash_bootstrap_components as dbc
 import dash_core_components as dcc
 import dash_html_components as html
+import dash
 from dash.dependencies import Input, Output, State
 import pandas as pd
 from dash_table import DataTable
@@ -73,8 +74,19 @@ scatter_container = html.Div(
     style={'width': '50%', 'display': 'inline-block'}
 )
 
+reset_button_container = html.Div(
+    [
+        dbc.Button(
+            "Reset Plot", color = 'primary', id="reset-button", n_clicks=0
+        ),
+        html.Br(),
+        html.Br(),
+    ]
+)
+
 layout = html.Div(
     [
+        reset_button_container,
         scatter_container, 
         hist_container
     ]
@@ -85,7 +97,7 @@ layout = html.Div(
         Output('dropdown-scatterplot-value', "options"),
         Input('dropdown-scatterplot-value', 'value'),
         Input('url', "pathname"))
-def update_scatter_dropdown(value, _):
+def update_scatter_dropdown(value, url):
 
     _, metadata_dic = import_metadata(get_type_colname = True)
 
@@ -111,7 +123,7 @@ def update_scatter_dropdown(value, _):
 @app.callback(
         Output('dropdown-hist-value', "options"),
         Input('url', "pathname"))
-def update_hist_dropdown(_):
+def update_hist_dropdown(url):
 
     _, metadata_dic = import_metadata(get_type_colname = True)
 
@@ -125,23 +137,29 @@ def update_hist_dropdown(_):
 
     return options
 
-
 #Updates scatter plot
 @app.callback(
     Output('numeric-multi-figure', "figure"),
     Input('dropdown-scatterplot-value', "value"),
     Input('categorical-multi-figure', 'clickData'),
+    Input('reset-button', 'n_clicks'),
     Input('url', "pathname"))
-def update_scatter(selection, clicked, _):
-    
+def update_scatter(selection, clicked, n_click, url):
+        
     #blank before selection
     if (selection is None) or (selection == []):
         return blank_fig()
 
+    #get triggered dictionary
+    trigger_list = dash.callback_context.triggered[0]["prop_id"]
+
+    #is button been triggered?
+    reset_df = True if 'reset-button.n_clicks' in trigger_list else False
+
     df = import_dataset()
 
     #filter data index based on clicked hist
-    if clicked is not None:
+    if (clicked is not None) and (not reset_df):
         clicked_index = clicked['points'][0]['pointNumbers']
         df = df[df.index.isin(clicked_index)]
 
@@ -165,19 +183,27 @@ def update_scatter(selection, clicked, _):
     Output('categorical-multi-figure', "figure"),
     Input('dropdown-hist-value', "value"),
     Input('numeric-multi-figure', 'relayoutData'),
+    Input('reset-button', 'n_clicks'),
     Input('url', "pathname"),
     State('dropdown-scatterplot-value', "value"))
-def update_hist(selection, zoom_range, _, selected_col):
+def update_hist(selection, zoom_range, n_click, url, selected_col):
+    
     #blank before selection
     if (selection is None) or (selection == []):
         return blank_fig()
+
+    #get triggered dictionary
+    trigger_list = dash.callback_context.triggered[0]["prop_id"]
+
+    #is button been triggered?
+    reset_df = True if 'reset-button.n_clicks' in trigger_list else False
 
     df = import_dataset()
 
     #list of key to check if 'auto' is in any key
     is_auto_zoom = any(['auto' in x for x in zoom_range.keys()])
 
-    if not is_auto_zoom:
+    if (not is_auto_zoom) and (not reset_df):
         name_range_list = ['x', 'y']
         for i, col in enumerate(selected_col):
             axis_string = f'{name_range_list[i]}axis'

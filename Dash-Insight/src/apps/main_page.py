@@ -114,7 +114,7 @@ layout = html.Div([
         Output('datatable-interactivity', 'columns'),
         Output('datatable-interactivity', 'data')],
     Input('url', "pathname"))
-def update_dataset(_):
+def update_dataset(url):
     
     df = import_dataset()
 
@@ -135,7 +135,7 @@ def update_dataset(_):
         Input('datatable-interactivity', "derived_virtual_data"),
         Input('url', "pathname")
     ])
-def update_info_rows(rows, _):
+def update_info_rows(rows, url):
 
     df = import_dataset()
     
@@ -154,7 +154,7 @@ def update_info_rows(rows, _):
 @app.callback(
         Output('dropdown-string-value', "options"),
         Input('url', "pathname"))
-def update_dropdown(_):
+def update_dropdown(url):
 
     _, metadata_dic = import_metadata(get_type_colname = True)
 
@@ -176,7 +176,7 @@ def update_dropdown(_):
     Input('dropdown-string-value', 'value'),
     Input('datatable-interactivity', "derived_virtual_data"),
     Input('url', "pathname"))
-def update_graphs(string_col, rows, _):
+def update_graphs(string_col, rows, url):
 
     if string_col is None:
         return blank_fig()
@@ -208,7 +208,7 @@ def update_graphs(string_col, rows, _):
     Output('summary-table', "figure"),
     Input('datatable-interactivity', "derived_virtual_data"),
     Input('url', "pathname"))
-def update_table(rows, _):
+def update_table(rows, url):
     
     _, metadata_type = import_metadata(get_type_colname = True)
 
