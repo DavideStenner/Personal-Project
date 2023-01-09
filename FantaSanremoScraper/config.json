@@ -1,0 +1,25 @@
+{
+    "link": "https://app.fantasanremo.com/",
+    "league_dict": {
+        "Campionato Mondiale": "637c24339cc0018fbf707872",
+        "TicketOne": "63a32534499b48e04bc958c5",
+        "Pandora": "63a32418499b48e04bc95891",
+        "Crodino": "63a32371499b48e04bc9586b",
+        "Philadelphia": "63a324d0499b48e04bc958aa",
+        "Lavazza Qualità Rossa": "63a323c9499b48e04bc9587e"
+    },
+    "wait_time": 10,
+    "number_element_by_page": 10,
+    "xpath_dict": {
+        "accept_credential": "//button[@title='Accedi']",
+        "next_page": "//button[@class='MuiButtonBase-root css-19w4wep']",
+        "coockie": "//*[@id='CybotCookiebotDialogBodyButtonDecline']",
+        "total_team": "//div[@class='MuiBox-root css-dyc9h6']//h6[@class='MuiTypography-root MuiTypography-subtitle2 css-jyrmge']"
+    },
+    "class_dict": {
+        "box_info": "MuiGrid-root MuiGrid-item MuiGrid-grid-xs-12 MuiGrid-grid-c_lg-6 css-xrgrr1",
+        "team_info": "MuiBox-root css-rddnth",
+        "number_total_team": "MuiTypography-root MuiTypography-subtitle2 css-jyrmge"
+    }
+    
+}
