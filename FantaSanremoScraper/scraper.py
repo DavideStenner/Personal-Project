@@ -19,6 +19,7 @@ class ScraperFanta():
     def __init__(
         self, number_page_scrape=None, pct_scrape=.6, 
         backup = 500, keep_active_pc_iteration = 25,
+        check_unique_name=False, 
         selected_league: str = "Campionato Mondiale",
         path_config='config.json', path_credential='credential.json',
         test=False, 
@@ -41,6 +42,8 @@ class ScraperFanta():
         self.wait_time=config["wait_time"]
         self.xpath_dict=config["xpath_dict"]
         self.class_dict=config["class_dict"]
+        self.check_unique_name=check_unique_name
+
         self.initialize_driver()
         
         self.results = Counter()
@@ -142,14 +145,7 @@ class ScraperFanta():
 
     def get_statistics(self):
 
-        #get image
         sleep(.5)
-        # WebDriverWait(self.driver, self.wait_time).until(
-        #     EC.presence_of_all_elements_located(
-        #         (By.XPATH, "//img")
-        #     )
-        # )
-
         soup = self.get_html_source()
 
         team_box_list = soup.find_all('div', {"class": self.class_dict['box_info']})
@@ -157,9 +153,21 @@ class ScraperFanta():
         for team_box in team_box_list:
             team_name = team_box.find('div', {'class': self.class_dict['team_info']}).getText().strip()
             
-            if (team_name not in self.unique_team_set) & (team_name != ''):
-                self.unique_team_set.add(team_name)
+            if self.check_unique_name:
+                if (team_name not in self.unique_team_set) & (team_name != ''):
+                    self.unique_team_set.add(team_name)
 
+                    artists_list = [
+                        x.get('src')
+                        for x in team_box.find_all('img')
+                        if 'artists/' in x.get('src')
+                    ]
+
+                    artists_counter = Counter(artists_list)
+
+                    self.captain.update(set([artists_list[0]]))
+                    self.results.update(artists_counter)
+            else:
                 artists_list = [
                     x.get('src')
                     for x in team_box.find_all('img')
@@ -218,16 +226,28 @@ class ScraperFanta():
         self.save_results(iteration)
         
 # %%
-# scraper = ScraperFanta(selected_league="TicketOne", number_page_scrape = 3, test=True)
+# scraper = ScraperFanta(selected_league="TicketOne", number_page_scrape = 5, test=True, backup=1)
 # scraper.activate_bot()
 
 
 #%%
 if __name__=='__main__':
+
     parser = argparse.ArgumentParser()
     parser.add_argument('--league', type=str, default="Campionato Mondiale")
-    args = parser.parse_args()
+    parser.add_argument('--number_page_scrape', type=int, default=None)
+    parser.add_argument('--pct_scrape', type=float, default=0.6)
+    parser.add_argument('--backup', type=int, default=1)
+    parser.add_argument('--keep_active_pc_iteration', type=int, default=25)
+    parser.add_argument('--check_unique_name', type=str, default='y')
     
-    scraper = ScraperFanta(selected_league=args.league)
+    args = parser.parse_args()
+
+    scraper = ScraperFanta(
+        selected_league=args.league,
+        check_unique_name=(args.check_unique_name.lower()=='y'),
+        number_page_scrape=args.number_page_scrape, pct_scrape=args.pct_scrape, 
+        backup = args.backup, keep_active_pc_iteration = args.keep_active_pc_iteration
+    )
     scraper.activate_bot()
 
