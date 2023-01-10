@@ -59,6 +59,9 @@ class ScraperFanta():
         if not os.path.exists(self.path_save):
             os.makedirs(self.path_save)
 
+        if not os.path.exists(os.path.join(self.path_save, 'backup')):
+            os.makedirs(os.path.join(self.path_save, 'backup'))
+
     def initialize_driver(self):
         chrome_options = Options()
         if not self.test:
@@ -187,15 +190,19 @@ class ScraperFanta():
         sleep_time = np.random.uniform(.25, .5, 1)[0]
         sleep(sleep_time)
 
-    def save_results(self, iteration):
+    def save_results(self, iteration=None):
 
         save_results = {
             'frequency': self.results,
             'captain': self.captain
         }
-            
+        path_save = (
+            os.path.join(self.path_save, 'backup', f"results_{iteration}.json") 
+            if iteration is not None 
+            else os.path.join(self.path_save, "results.json")
+        )
         with open(
-            os.path.join(self.path_save, f"results_{iteration}.json"), 
+            path_save, 
             "w"
         ) as outfile:
             json.dump(dict(save_results), outfile)
@@ -237,17 +244,32 @@ if __name__=='__main__':
     parser.add_argument('--league', type=str, default="Campionato Mondiale")
     parser.add_argument('--number_page_scrape', type=int, default=None)
     parser.add_argument('--pct_scrape', type=float, default=0.6)
-    parser.add_argument('--backup', type=int, default=1)
+    parser.add_argument('--backup', type=int, default=500)
     parser.add_argument('--keep_active_pc_iteration', type=int, default=25)
     parser.add_argument('--check_unique_name', type=str, default='y')
-    
+    parser.add_argument('--scrape_all_league', type=str, default='n')
     args = parser.parse_args()
 
-    scraper = ScraperFanta(
-        selected_league=args.league,
-        check_unique_name=(args.check_unique_name.lower()=='y'),
-        number_page_scrape=args.number_page_scrape, pct_scrape=args.pct_scrape, 
-        backup = args.backup, keep_active_pc_iteration = args.keep_active_pc_iteration
-    )
-    scraper.activate_bot()
+    if (args.scrape_all_league.lower()) == 'y':
+        with open('config.json') as config_file:
+            league_dict = json.load(config_file)['league_dict']
+        
+        for league_name, league_id in league_dict.items():
+
+        
+            scraper = ScraperFanta(
+                selected_league=league_name,
+                check_unique_name=(args.check_unique_name.lower()=='y'),
+                number_page_scrape=args.number_page_scrape, pct_scrape=args.pct_scrape, 
+                backup = args.backup, keep_active_pc_iteration = args.keep_active_pc_iteration
+            )
+            scraper.activate_bot()
+    else:
+        scraper = ScraperFanta(
+            selected_league=args.league,
+            check_unique_name=(args.check_unique_name.lower()=='y'),
+            number_page_scrape=args.number_page_scrape, pct_scrape=args.pct_scrape, 
+            backup = args.backup, keep_active_pc_iteration = args.keep_active_pc_iteration
+        )
+        scraper.activate_bot()
 
