@@ -14,16 +14,20 @@ import pyautogui
 from tqdm import tqdm
 import numpy as np
 import argparse
+from glob import glob
 
 class ScraperFanta():
     def __init__(
-        self, number_page_scrape=None, pct_scrape=.6, 
-        backup = 500, keep_active_pc_iteration = 25,
-        check_unique_name=False, 
+        self, number_page_scrape: int=None, pct_scrape: float =.6, 
+        backup: int = 500, keep_active_pc_iteration: int = 25,
+        check_unique_name: bool=False, 
         selected_league: str = "Campionato Mondiale",
-        path_config='config.json', path_credential='credential.json',
-        test=False, 
+        path_config: str='config.json', path_credential: str ='credential.json',
+        test: bool =False, overwrite: bool = True, failsafe: bool = False
+
     ):
+        pyautogui.FAILSAFE = False
+
         with open(path_credential) as cred_file:
             credential = json.load(cred_file)
         
@@ -43,11 +47,14 @@ class ScraperFanta():
         self.xpath_dict=config["xpath_dict"]
         self.class_dict=config["class_dict"]
         self.check_unique_name=check_unique_name
-
+        self.num_selection = config["num_selection"]
+        
         self.initialize_driver()
         
         self.results = Counter()
         self.captain = Counter()
+        self.score_selection = Counter()
+
         self.unique_team_set = set(['pybranchia'])
 
         self.number_page_scrape = number_page_scrape
@@ -56,11 +63,20 @@ class ScraperFanta():
         self.pct_scrape=pct_scrape
 
         self.path_save = f"data/{selected_league}/"
+
         if not os.path.exists(self.path_save):
             os.makedirs(self.path_save)
 
         if not os.path.exists(os.path.join(self.path_save, 'backup')):
             os.makedirs(os.path.join(self.path_save, 'backup'))
+
+        if overwrite:
+            list_file = glob(
+                os.path.join(self.path_save, '**/results*.json'), 
+                recursive=True
+            )
+            for file_path in list_file:
+                os.remove(file_path)
 
     def initialize_driver(self):
         chrome_options = Options()
@@ -168,6 +184,9 @@ class ScraperFanta():
 
                     artists_counter = Counter(artists_list)
 
+                    for weight, artists in enumerate(artists_list):
+                        self.score_selection[artists] += (self.num_selection - weight)
+
                     self.captain.update(set([artists_list[0]]))
                     self.results.update(artists_counter)
             else:
@@ -179,6 +198,9 @@ class ScraperFanta():
 
                 artists_counter = Counter(artists_list)
 
+                for weight, artists in enumerate(artists_list):
+                    self.score_selection[artists] += (self.num_selection - weight)
+
                 self.captain.update(set([artists_list[0]]))
                 self.results.update(artists_counter)
 
@@ -187,14 +209,15 @@ class ScraperFanta():
         self.wait_and_click_by(By.XPATH, self.xpath_dict['next_page'])
 
     def random_sleep(self):
-        sleep_time = np.random.uniform(.25, .5, 1)[0]
+        sleep_time = np.random.uniform(.35, .5, 1)[0]
         sleep(sleep_time)
 
     def save_results(self, iteration=None):
 
         save_results = {
             'frequency': self.results,
-            'captain': self.captain
+            'captain': self.captain,
+            'weight': self.score_selection,
         }
         path_save = (
             os.path.join(self.path_save, 'backup', f"results_{iteration}.json") 
@@ -230,10 +253,10 @@ class ScraperFanta():
             self.get_statistics()
             self.random_sleep()
 
-        self.save_results(iteration)
+        self.save_results()
         
 # %%
-# scraper = ScraperFanta(selected_league="TicketOne", number_page_scrape = 5, test=True, backup=1)
+# scraper = ScraperFanta(number_page_scrape = 5, test=True, backup=1)
 # scraper.activate_bot()
 
 
@@ -243,33 +266,36 @@ if __name__=='__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--league', type=str, default="Campionato Mondiale")
     parser.add_argument('--number_page_scrape', type=int, default=None)
-    parser.add_argument('--pct_scrape', type=float, default=0.6)
+    parser.add_argument('--pct_scrape', type=float, default=0.3)
     parser.add_argument('--backup', type=int, default=500)
     parser.add_argument('--keep_active_pc_iteration', type=int, default=25)
-    parser.add_argument('--check_unique_name', type=str, default='y')
-    parser.add_argument('--scrape_all_league', type=str, default='n')
+    parser.add_argument('--check_unique_name', action='store_true')
+    parser.add_argument('--scrape_all_league', action='store_true')
     args = parser.parse_args()
 
-    if (args.scrape_all_league.lower()) == 'y':
+    if args.scrape_all_league:
         with open('config.json') as config_file:
             league_dict = json.load(config_file)['league_dict']
         
         for league_name, league_id in league_dict.items():
-
-        
+            print(f'\n\nStarting {league_name}')
+            
             scraper = ScraperFanta(
                 selected_league=league_name,
-                check_unique_name=(args.check_unique_name.lower()=='y'),
+                check_unique_name=args.check_unique_name,
                 number_page_scrape=args.number_page_scrape, pct_scrape=args.pct_scrape, 
                 backup = args.backup, keep_active_pc_iteration = args.keep_active_pc_iteration
             )
             scraper.activate_bot()
+            scraper.quit()
     else:
+        print(f'\n\nStarting {args.league}')
         scraper = ScraperFanta(
             selected_league=args.league,
-            check_unique_name=(args.check_unique_name.lower()=='y'),
+            check_unique_name=args.check_unique_name,
             number_page_scrape=args.number_page_scrape, pct_scrape=args.pct_scrape, 
             backup = args.backup, keep_active_pc_iteration = args.keep_active_pc_iteration
         )
         scraper.activate_bot()
+        scraper.quit()
 

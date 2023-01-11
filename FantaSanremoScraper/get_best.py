@@ -10,11 +10,14 @@ with open('mapping_artists.json') as mapping_file:
 artists_mapping = mapping['artists_mapping']
 quotazioni = mapping['quotazioni']
 
+with open('config.json') as config_file:
+    config = json.load(config_file)
+
 
 def get_artists_composition(
     df: pd.DataFrame, 
-    num_baudi: int = 100, 
-    num_selection: int =5, solver=cp.ECOS_BB
+    num_baudi: int = config['num_baudi'], 
+    num_selection: int = config['num_selection'], solver=cp.ECOS_BB
 ):
     number_suggestion = df.shape[0]
 
@@ -40,20 +43,33 @@ def get_artists_composition(
     ]
     assert results['quotazione'].sum() <= num_baudi
 
-    return results
+    return results, score
 
 #%%
-with open('data/Pandora/results_1572.json') as config_file:
+with open('data/TicketOne/results.json') as config_file:
     results = json.load(config_file)
 
-df = pd.DataFrame([[x, y] for x, y in results['frequency'].items()])
+df = pd.DataFrame(
+    [[x, y] for x, y in results['frequency'].items()],
+    columns = ['artista', 'frequenza']
+)
+df = df.merge(
+    pd.DataFrame(
+        [[x, y] for x, y in results['weight'].items()],
+        columns = ['artista', 'weight']
+    ),
+)
 
-df.columns = ['artista', 'frequenza']
 df['artista'] = df['artista'].map(artists_mapping)
 df['quotazione'] = df['artista'].map(quotazioni)
-df['norm_freq'] = df.groupby('quotazione')['frequenza'].transform('sum')
+# df['norm_freq'] = df.groupby('quotazione')['frequenza'].transform('sum')
 
-df['score'] = df['frequenza']/df['norm_freq']
-
+df['score'] = (
+    #rank medio
+    (df['weight']/(df['frequenza'] * 5))# + \
+    # (df['frequenza']/(df['norm_freq']))
+)
 #%%
-get_artists_composition(df)
+composition, score = get_artists_composition(df)
+print(score)
+composition.sort_values('score', ascending=False)

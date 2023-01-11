@@ -10,6 +10,8 @@
     },
     "wait_time": 10,
     "number_element_by_page": 10,
+    "num_baudi": 100, 
+    "num_selection": 5,
     "xpath_dict": {
         "accept_credential": "//button[@title='Accedi']",
         "next_page": "//button[2][@class='MuiButtonBase-root css-19w4wep']",
