@@ -28,4 +28,12 @@ python scraper.py --league "Campionato Mondiale" --pct_scrape 0.6
 ```
 
 ### get best team
-#### Work in progress
+```
+python scraper.py --league "Campionato Mondiale"
+python get_best.py --league "Campionato Mondiale"
+```
+### get every best team
+```
+python scraper.py --scrape_all_league
+python get_best.py --get_all
+```
