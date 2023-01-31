@@ -3,16 +3,11 @@ import json
 import pandas as pd
 import numpy as np
 import cvxpy as cp
-
-with open('mapping_artists.json') as mapping_file:
-    mapping = json.load(mapping_file)
-
-artists_mapping = mapping['artists_mapping']
-quotazioni = mapping['quotazioni']
+import argparse
+import os
 
 with open('config.json') as config_file:
     config = json.load(config_file)
-
 
 def get_artists_composition(
     df: pd.DataFrame, 
@@ -45,31 +40,65 @@ def get_artists_composition(
 
     return results, score
 
-#%%
-with open('data/TicketOne/results.json') as config_file:
-    results = json.load(config_file)
+def get_best_team(path_save: str, league: str):
+    save_folder = os.path.join(path_save, league)
 
-df = pd.DataFrame(
-    [[x, y] for x, y in results['frequency'].items()],
-    columns = ['artista', 'frequenza']
-)
-df = df.merge(
-    pd.DataFrame(
-        [[x, y] for x, y in results['weight'].items()],
-        columns = ['artista', 'weight']
-    ),
-)
+    if not os.path.exists(save_folder):
+        os.makedirs(save_folder)
 
-df['artista'] = df['artista'].map(artists_mapping)
-df['quotazione'] = df['artista'].map(quotazioni)
-# df['norm_freq'] = df.groupby('quotazione')['frequenza'].transform('sum')
+    with open('mapping_artists.json') as mapping_file:
+        mapping = json.load(mapping_file)
 
-df['score'] = (
+    artists_mapping = mapping['artists_mapping']
+    quotazioni = mapping['quotazioni']
+
+    with open(f'data/{league}/results.json') as result_file:
+        results = json.load(result_file)
+
+    df = pd.DataFrame(
+        [[x, y] for x, y in results['frequency'].items()],
+        columns = ['artista', 'frequenza']
+    )
+    df = df.merge(
+        pd.DataFrame(
+            [[x, y] for x, y in results['weight'].items()],
+            columns = ['artista', 'weight']
+        ),
+    )
+
+    df['artista'] = df['artista'].map(artists_mapping)
+    df['quotazione'] = df['artista'].map(quotazioni)
+
     #rank medio
-    (df['weight']/(df['frequenza'] * 5))# + \
-    # (df['frequenza']/(df['norm_freq']))
-)
-#%%
-composition, score = get_artists_composition(df)
-print(score)
-composition.sort_values('score', ascending=False)
+    df['score'] = (
+        (df['weight']/(df['frequenza'] * 5)) 
+    )
+    composition, score = get_artists_composition(df)
+    composition = composition.sort_values('score', ascending=False)\
+        .reset_index(drop=True)
+    print(f'\n\nScore of after optimization: {score}\n\n')
+    print(composition.to_markdown())
+    
+    composition.to_csv(
+        os.path.join(save_folder, league+'.csv'), 
+        index=False
+    )
+
+if __name__=='__main__':
+
+    parser = argparse.ArgumentParser()
+    
+    parser.add_argument('--path_save', type=str, default="results")
+    parser.add_argument('--league', type=str, default="Campionato Mondiale")
+    parser.add_argument('--get_all', action='store_true')
+    args = parser.parse_args()
+
+    if args.get_all:
+        with open('config.json') as config_file:
+            league_dict = json.load(config_file)['league_dict']
+        
+        for league_name, _ in league_dict.items():
+            print(f'\n\nStarting {league_name}')
+            get_best_team(args.path_save, league_name)
+    else:
+        get_best_team(args.path_save, args.league)
