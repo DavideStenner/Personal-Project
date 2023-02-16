@@ -40,7 +40,7 @@ def get_artists_composition(
 
     return results, score
 
-def get_best_team(path_save: str, league: str):
+def get_best_team(path_save: str, league: str, print_all: bool, use_leaderboard: bool):
     save_folder = os.path.join(path_save, league)
 
     if not os.path.exists(save_folder):
@@ -70,12 +70,26 @@ def get_best_team(path_save: str, league: str):
     df['quotazione'] = df['artista'].map(quotazioni)
 
     #rank medio
-    df['score'] = (
-        (df['weight']/(df['frequenza'] * 5)) 
-    )
+    if use_leaderboard:
+        leaderboard_results = mapping['classifica_artisti']
+        df['score'] = df['artista'].map(leaderboard_results)
+
+        #inspect
+        df['score_quotazione'] = df['score']/df['quotazione']
+
+    else:
+        df['score'] = (
+            (df['weight']/(df['frequenza'] * 5)) 
+        )
+
     composition, score = get_artists_composition(df)
     composition = composition.sort_values('score', ascending=False)\
         .reset_index(drop=True)
+    if print_all:
+        print('\n\n')
+        print(df.sort_values('score', ascending=False).to_markdown())
+        print('\n\n')
+
     print(f'\n\nScore of after optimization: {score}\n\n')
     print(composition.to_markdown())
     
@@ -83,6 +97,7 @@ def get_best_team(path_save: str, league: str):
         os.path.join(save_folder, league+'.csv'), 
         index=False
     )
+        
 
 if __name__=='__main__':
 
@@ -91,7 +106,13 @@ if __name__=='__main__':
     parser.add_argument('--path_save', type=str, default="results")
     parser.add_argument('--league', type=str, default="Campionato Mondiale")
     parser.add_argument('--get_all', action='store_true')
+    parser.add_argument('--print_all', action='store_true')
+    parser.add_argument('--use_leaderboard', action='store_true')
+
     args = parser.parse_args()
+    
+    if args.use_leaderboard:
+        args.path_save =  'leaderboard_result'
 
     if args.get_all:
         with open('config.json') as config_file:
@@ -99,6 +120,6 @@ if __name__=='__main__':
         
         for league_name, _ in league_dict.items():
             print(f'\n\nStarting {league_name}')
-            get_best_team(args.path_save, league_name)
+            get_best_team(args.path_save, league_name, args.print_all, args.use_leaderboard)
     else:
-        get_best_team(args.path_save, args.league)
+        get_best_team(args.path_save, args.league, args.print_all, args.use_leaderboard)
